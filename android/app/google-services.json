@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "883895428583",
+    "project_id": "senior-diary-app",
+    "storage_bucket": "senior-diary-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:883895428583:android:5fefde824f58c5d8004942",
+        "android_client_info": {
+          "package_name": "com.example.seniordiary"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB1xch9kp4cIgCzf_eeBt9BQt3-guliD08"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
