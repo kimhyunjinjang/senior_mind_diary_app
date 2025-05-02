@@ -1,4 +1,6 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'firebase_options.dart';
 import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
@@ -207,7 +209,55 @@ void main() async {
   await Firebase.initializeApp(
     options: CustomFirebaseOptions.currentPlatform,
   );
+  // 익명 로그인 시도
+  await _signInAnonymously();
   runApp(const MyApp());
+}
+
+Future<void> _signInAnonymously() async {
+  try {
+    final userCredential = await FirebaseAuth.instance.signInAnonymously();
+    final user = userCredential.user;
+    if (user != null) {
+      print('익명 로그인 성공: ${user.uid}');
+    }
+  } catch (e) {
+    print('익명 로그인 실패: $e');
+  }
+}
+
+Future<void> saveEmotionAndNote({
+  required String date,       // 예: '2025-05-02'
+  required String emotion,    // 예: 'happy', 'neutral', 'sad'
+  required String note,       // 예: '산책을 해서 기분이 좋았어요'
+}) async {
+  print('📌 saveEmotionAndNote 시작됨');
+
+  final user = FirebaseAuth.instance.currentUser;
+  if (user == null) {
+    print('로그인된 사용자가 없습니다.');
+    return;
+  }
+
+  final uid = user.uid;
+  print('🧑 현재 UID: $uid');
+
+  try {
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .collection('diaries')
+        .doc(date)
+        .set({
+      'emotion': emotion,
+      'note': note,
+      'timestamp': FieldValue.serverTimestamp(),
+    });
+
+    print('Firestore 저장 성공');
+  } catch (e) {
+    print('Firestore 저장 실패: $e');
+  }
 }
 
 class MyApp extends StatelessWidget {
@@ -433,6 +483,16 @@ class _CalendarScreenState extends State<CalendarScreen> {
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => const EmotionStatsScreen(),),
+              );
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.cloud_upload), // 적당한 아이콘
+            onPressed: () {
+              saveEmotionAndNote(
+                date: '2025-05-02',
+                emotion: 'happy',
+                note: '테스트로 Firestore에 저장!',
               );
             },
           ),
