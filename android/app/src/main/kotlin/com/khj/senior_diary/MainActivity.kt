@@ -1,4 +1,4 @@
-package com.example.senior_mind_diary_app
+package com.khj.senior_diary
 
 import io.flutter.embedding.android.FlutterActivity
 

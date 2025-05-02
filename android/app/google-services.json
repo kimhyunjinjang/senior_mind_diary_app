@@ -7,9 +7,9 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:883895428583:android:5fefde824f58c5d8004942",
+        "mobilesdk_app_id": "1:883895428583:android:f3b24258d7f64a3f004942",
         "android_client_info": {
-          "package_name": "com.example.seniordiary"
+          "package_name": "com.khj.senior_diary"
         }
       },
       "oauth_client": [],
