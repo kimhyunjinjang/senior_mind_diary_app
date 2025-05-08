@@ -11,6 +11,29 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:pie_chart/pie_chart.dart';
 
+Future<Map<String, Map<String, String>>> loadEmotionDataFromFirestore() async {
+  final user = FirebaseAuth.instance.currentUser;
+  if (user == null) return {};
+
+  final snapshot = await FirebaseFirestore.instance
+      .collection('users')
+      .doc(user.uid)
+      .collection('diaries')
+      .get();
+
+  Map<String, Map<String, String>> result = {};
+  for (var doc in snapshot.docs) {
+    final date = doc.id; // 문서 ID가 날짜
+    final data = doc.data();
+    result[date] = {
+      'emotion': data['emotion'] ?? '',
+      'diary': data['note'] ?? '',
+    };
+  }
+
+  return result;
+}
+
 class SearchDiaryScreen extends StatefulWidget {
   const SearchDiaryScreen({super.key});
 
@@ -402,7 +425,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   Future<void> _loadEmotionData() async {
-    final prefs = await SharedPreferences.getInstance();
+    /*final prefs = await SharedPreferences.getInstance();
     final jsonString = prefs.getString('emotionData');
     print('불러온 JSON 문자열: $jsonString');
 
@@ -413,8 +436,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
       );
       emotionDataNotifier.value = data;
       _mostFrequentEmotion = getMostFrequentEmotion(data);
-    }
+    }*/
+    final data = await loadEmotionDataFromFirestore();
+    emotionDataNotifier.value = data;
+    _mostFrequentEmotion = getMostFrequentEmotion(data);
   }
+
   void _debugPrintAppDir() async {
     final dir = await getApplicationSupportDirectory();
     print('🗂️ 앱 저장 경로: ${dir.path}');
@@ -483,16 +510,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => const EmotionStatsScreen(),),
-              );
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.cloud_upload), // 적당한 아이콘
-            onPressed: () {
-              saveEmotionAndNote(
-                date: '2025-05-02',
-                emotion: 'happy',
-                note: '테스트로 Firestore에 저장!',
               );
             },
           ),
@@ -681,6 +698,17 @@ class _EmotionInputScreenState extends State<EmotionInputScreen> {
     await prefs.setString('emotionData', json.encode(data));
     emotionDataNotifier.value = Map<String, Map<String, String>>.from(
         data.map((k, v) => MapEntry(k, Map<String, String>.from(v)))
+    );
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('감정과 일기가 저장되었습니다.')),
+    );
+
+    // Firestore 저장
+    await saveEmotionAndNote(
+      date: formattedDate,
+      emotion: _selectedEmotion!,
+      note: _diaryController.text,
     );
 
     ScaffoldMessenger.of(context).showSnackBar(
