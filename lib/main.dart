@@ -11,6 +11,45 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:pie_chart/pie_chart.dart';
 
+enum UserRole { senior, guardian }
+
+class RoleToggle extends StatefulWidget {
+  final UserRole currentRole;
+  final ValueChanged<UserRole> onRoleChanged;
+
+  const RoleToggle({required this.currentRole, required this.onRoleChanged, super.key});
+
+  @override
+  State<RoleToggle> createState() => _RoleToggleState();
+}
+
+class _RoleToggleState extends State<RoleToggle> {
+  late UserRole _role;
+
+  @override
+  void initState() {
+    super.initState();
+    _role = widget.currentRole;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DropdownButton<UserRole>(
+      value: _role,
+      items: const [
+        DropdownMenuItem(value: UserRole.senior, child: Text("👴 시니어 모드")),
+        DropdownMenuItem(value: UserRole.guardian, child: Text("👨 보호자 모드")),
+      ],
+      onChanged: (value) {
+        if (value != null) {
+          setState(() => _role = value);
+          widget.onRoleChanged(value);
+        }
+      },
+    );
+  }
+}
+
 Future<Map<String, Map<String, String>>> loadEmotionDataFromFirestore() async {
   final user = FirebaseAuth.instance.currentUser;
   if (user == null) return {};
@@ -488,6 +527,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
+  UserRole _currentRole = UserRole.senior;
 
   @override
   Widget build(BuildContext context) {
@@ -513,6 +553,15 @@ class _CalendarScreenState extends State<CalendarScreen> {
               );
             },
           ),
+          RoleToggle(
+            currentRole: _currentRole,
+            onRoleChanged: (newRole) {
+              setState(() {
+                _currentRole = newRole;
+                print(' 현재 역할: $_currentRole');
+              });
+            },
+          )
         ],
       ),
       body: Column(
