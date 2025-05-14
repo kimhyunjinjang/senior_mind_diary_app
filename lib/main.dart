@@ -10,6 +10,200 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:pie_chart/pie_chart.dart';
+import 'dart:math';
+import 'package:flutter/services.dart';
+
+class InviteCodeInputScreen extends StatefulWidget {
+  @override
+  State<InviteCodeInputScreen> createState() => _InviteCodeInputScreenState();
+}
+
+class _InviteCodeInputScreenState extends State<InviteCodeInputScreen> {
+  final _controller = TextEditingController();
+  String? _error;
+
+  Future<void> _verifyCode() async {
+    final input = _controller.text.trim();
+    final doc = await FirebaseFirestore.instance
+        .collection('inviteCodes')
+        .doc(input)
+        .get();
+
+    if (!doc.exists) {
+      setState(() => _error = "존재하지 않는 코드입니다.");
+      return;
+    }
+
+    final ownerUid = doc.data()?['ownerUid'];
+    final viewerUid = FirebaseAuth.instance.currentUser!.uid;
+
+    if (ownerUid == viewerUid) {
+      print("⚠️ [테스트] 본인 코드 입력: 연결 허용됨");
+      // 테스트이므로 연결은 그대로 진행. 실제 배포 전엔 반드시 차단으로 되돌려야 함!
+      // setState(() => _error = "본인의 코드입니다.");
+      // return;
+    }
+
+    // 보호자로 등록
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(ownerUid)
+        .set({
+      'sharedWith': FieldValue.arrayUnion([viewerUid])
+    }, SetOptions(merge: true));
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("연결이 완료되었습니다.")),
+    );
+
+    Navigator.pop(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text("인증 코드 입력")),
+      body: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          children: [
+            TextField(
+              controller: _controller,
+              decoration: InputDecoration(
+                labelText: "시니어에게 받은 인증 코드",
+                errorText: _error,
+              ),
+            ),
+            SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: _verifyCode,
+              child: Text("코드 인증"),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class InviteCodeGenerateScreen extends StatelessWidget {
+  const InviteCodeGenerateScreen({super.key});
+
+  // 랜덤 인증 코드 생성
+  Future<String> generateAndSaveInviteCode(String ownerUid) async {
+    final code = _generateRandomCode(6);
+    final docRef = FirebaseFirestore.instance.collection('inviteCodes').doc(code);
+
+    await docRef.set({
+      'ownerUid': ownerUid,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+
+    return code;
+  }
+
+  String _generateRandomCode(int length) {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    final rand = Random.secure();
+    return List.generate(length, (_) => chars[rand.nextInt(chars.length)]).join();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text("보호자 초대")),
+      body: Center(
+        child: ElevatedButton(
+          onPressed: () async {
+            final uid = FirebaseAuth.instance.currentUser!.uid;
+            final code = await generateAndSaveInviteCode(uid);
+
+            showDialog(
+              context: context,
+              builder: (_) => AlertDialog(
+                title: Text("초대 코드"),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text("이 코드를 보호자에게 전달하세요:"),
+                    SizedBox(height: 12),
+                    SelectableText(
+                      code,
+                      style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                    ),
+                    SizedBox(height: 12),
+                    ElevatedButton.icon(
+                      icon: Icon(Icons.copy),
+                      label: Text("복사하기"),
+                      onPressed: () {
+                        Clipboard.setData(ClipboardData(text: code));
+                        //Navigator.pop(context);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text("복사되었습니다!")),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+          child: Text("인증 코드 생성하기"),
+        ),
+      ),
+    );
+  }
+}
+
+class RoleSelectScreen extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text("당신은 누구신가요?")),
+      body: Padding(
+        padding: const EdgeInsets.all(32.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => InviteCodeGenerateScreen(),
+                  ),
+                );
+              },
+              icon: Icon(Icons.edit),
+              label: Text("👴 나는 일기를 기록하려는 사용자입니다"),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.deepPurpleAccent,
+                padding: EdgeInsets.all(16),
+              ),
+            ),
+            SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => InviteCodeInputScreen(),
+                  ),
+                );
+              },
+              icon: Icon(Icons.visibility),
+              label: Text("👨 나는 가족의 일기를 열람하려는 사용자입니다"),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blueAccent,
+                padding: EdgeInsets.all(16),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 enum UserRole { senior, guardian }
 
@@ -561,7 +755,18 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 print(' 현재 역할: $_currentRole');
               });
             },
-          )
+          ),
+        ElevatedButton(
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => RoleSelectScreen(),
+              ),
+            );
+          },
+          child: Text("보호자 등록"),
+        ),
         ],
       ),
       body: Column(
