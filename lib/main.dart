@@ -12,6 +12,34 @@ import 'package:path_provider/path_provider.dart';
 import 'package:pie_chart/pie_chart.dart';
 import 'dart:math';
 import 'package:flutter/services.dart';
+import 'package:senior_mind_diary_app/globals.dart' as globals;
+
+Future<void> clearGuardianModeInfo() async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.remove('isGuardianMode');
+  await prefs.remove('linkedUserId');
+
+  // 전역 변수도 초기화
+  globals.isGuardianMode = false;
+  globals.linkedUserId = null;
+}
+
+Future<void> loadGuardianModeInfo() async {
+  final prefs = await SharedPreferences.getInstance();
+  globals.isGuardianMode = prefs.getBool('isGuardianMode') ?? false;
+  globals.linkedUserId = prefs.getString('linkedUserId');
+}
+
+Future<void> saveGuardianModeInfo(String seniorUID) async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setBool('isGuardianMode', true);
+  await prefs.setString('linkedUserId', seniorUID);
+
+  // 전역 변수도 함께 업데이트
+  globals.isGuardianMode = true;
+  globals.linkedUserId = seniorUID;
+  print('⚠️ 보호자 인증 성공! 정보 저장: isGuardianMode=${globals.isGuardianMode}, linkedUserId=${globals.linkedUserId}');
+}
 
 class InviteCodeInputScreen extends StatefulWidget {
   @override
@@ -51,6 +79,9 @@ class _InviteCodeInputScreenState extends State<InviteCodeInputScreen> {
         .set({
       'sharedWith': FieldValue.arrayUnion([viewerUid])
     }, SetOptions(merge: true));
+
+    // 로컬에 보호자 모드 정보 저장
+    await saveGuardianModeInfo(ownerUid);
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text("연결이 완료되었습니다.")),
@@ -231,8 +262,8 @@ class _RoleToggleState extends State<RoleToggle> {
     return DropdownButton<UserRole>(
       value: _role,
       items: const [
-        DropdownMenuItem(value: UserRole.senior, child: Text("👴 시니어 모드")),
-        DropdownMenuItem(value: UserRole.guardian, child: Text("👨 보호자 모드")),
+        DropdownMenuItem(value: UserRole.senior, child: Text("시니어")),
+        DropdownMenuItem(value: UserRole.guardian, child: Text("보호자")),
       ],
       onChanged: (value) {
         if (value != null) {
@@ -467,6 +498,8 @@ void main() async {
   );
   // 익명 로그인 시도
   await _signInAnonymously();
+  // 보호자 모드 정보 로딩
+  await loadGuardianModeInfo();
   runApp(const MyApp());
 }
 
@@ -643,6 +676,9 @@ class CalendarScreen extends StatefulWidget {
 class _CalendarScreenState extends State<CalendarScreen> {
   String _mostFrequentEmotion = '보통';
 
+  String? _viewingEmotion;
+  String? _viewingDiary;
+
   @override
   void initState(){
     super.initState();
@@ -658,18 +694,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   Future<void> _loadEmotionData() async {
-    /*final prefs = await SharedPreferences.getInstance();
-    final jsonString = prefs.getString('emotionData');
-    print('불러온 JSON 문자열: $jsonString');
-
-    if (jsonString != null) {
-      final raw = json.decode(jsonString);
-      final data = Map<String, Map<String, String>>.from(
-          raw.map((k, v) => MapEntry(k, Map<String, String>.from(v)))
-      );
-      emotionDataNotifier.value = data;
-      _mostFrequentEmotion = getMostFrequentEmotion(data);
-    }*/
     final data = await loadEmotionDataFromFirestore();
     emotionDataNotifier.value = data;
     _mostFrequentEmotion = getMostFrequentEmotion(data);
@@ -767,6 +791,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
           },
           child: Text("보호자 등록"),
         ),
+          TextButton(
+            onPressed: () async {
+              await clearGuardianModeInfo();
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("시니어 모드로 전환됨")));
+              setState(() {}); // UI 재빌드
+            },
+            child: Text("🔄 시니어 모드로 전환", style: TextStyle(color: Colors.white)),
+          ),
         ],
       ),
       body: Column(
@@ -810,29 +842,40 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   setState(() {
                     _selectedDay = selectedDay;
                     _focusedDay = focusedDay;
+
+                    if (globals.isGuardianMode) {
+                      final dateStr = formatDate(selectedDay);
+                      final data = emotionDataNotifier.value[dateStr];
+                      _viewingEmotion = data?['emotion'];
+                      _viewingDiary = data?['diary'];
+                    }
                   });
 
-                  // 감정 입력 화면 다녀오기
-                  await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => EmotionInputScreen(selectedDay: selectedDay),
-                    ),
-                  );
+                  if (!globals.isGuardianMode) {
+                    // 감정 입력 화면 다녀오기
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) =>
+                            EmotionInputScreen(selectedDay: selectedDay),
+                      ),
+                    );
 
-                  // 데이터 다시 불러오기
-                  await _loadEmotionData();
 
-                  // 강제로 selectedDay를 한번 무효화했다가 다시 설정
-                  setState(() {
-                    _selectedDay = null;
-                  });
+                    // 데이터 다시 불러오기
+                    await _loadEmotionData();
 
-                  Future.delayed(Duration(milliseconds: 50), () {
+                    // 강제로 selectedDay를 한번 무효화했다가 다시 설정
                     setState(() {
-                      _focusedDay = selectedDay; // 다시 원래 날짜로 복귀해서 리렌더 유도
+                      _selectedDay = null;
                     });
-                  });
+
+                    Future.delayed(Duration(milliseconds: 50), () {
+                      setState(() {
+                        _focusedDay = selectedDay; // 다시 원래 날짜로 복귀해서 리렌더 유도
+                      });
+                    });
+                  }
                 },
 
                 // 감정 이모티콘 셀
@@ -883,7 +926,22 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 ),
               );
             },
-          )
+          ),
+          if (globals.isGuardianMode && _viewingEmotion != null)
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text("🗓️ 선택한 날짜: ${formatDate(_selectedDay!)}", style: TextStyle(fontSize: 16)),
+                  SizedBox(height: 8),
+                  Text("🙂 감정: $_viewingEmotion", style: TextStyle(fontSize: 18)),
+                  SizedBox(height: 8),
+                  Text("📓 일기 내용:", style: TextStyle(fontWeight: FontWeight.bold)),
+                  Text(_viewingDiary ?? '', style: TextStyle(fontSize: 16)),
+                ],
+              ),
+            ),
         ],
       ),
     );
