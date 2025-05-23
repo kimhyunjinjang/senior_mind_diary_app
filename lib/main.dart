@@ -14,16 +14,6 @@ import 'dart:math';
 import 'package:flutter/services.dart';
 import 'package:senior_mind_diary_app/globals.dart' as globals;
 
-Future<void> clearGuardianModeInfo() async {
-  final prefs = await SharedPreferences.getInstance();
-  await prefs.remove('isGuardianMode');
-  await prefs.remove('linkedUserId');
-
-  // 전역 변수도 초기화
-  globals.isGuardianMode = false;
-  globals.linkedUserId = null;
-}
-
 Future<void> loadGuardianModeInfo() async {
   final prefs = await SharedPreferences.getInstance();
   globals.isGuardianMode = prefs.getBool('isGuardianMode') ?? false;
@@ -241,43 +231,6 @@ class RoleSelectScreen extends StatelessWidget {
 }
 
 enum UserRole { senior, guardian }
-
-class RoleToggle extends StatefulWidget {
-  final UserRole currentRole;
-  final ValueChanged<UserRole> onRoleChanged;
-
-  const RoleToggle({required this.currentRole, required this.onRoleChanged, super.key});
-
-  @override
-  State<RoleToggle> createState() => _RoleToggleState();
-}
-
-class _RoleToggleState extends State<RoleToggle> {
-  late UserRole _role;
-
-  @override
-  void initState() {
-    super.initState();
-    _role = widget.currentRole;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return DropdownButton<UserRole>(
-      value: _role,
-      items: const [
-        DropdownMenuItem(value: UserRole.senior, child: Text("시니어")),
-        DropdownMenuItem(value: UserRole.guardian, child: Text("보호자")),
-      ],
-      onChanged: (value) {
-        if (value != null) {
-          setState(() => _role = value);
-          widget.onRoleChanged(value);
-        }
-      },
-    );
-  }
-}
 
 Future<Map<String, Map<String, String>>> loadEmotionDataFromFirestore() async {
   final user = FirebaseAuth.instance.currentUser;
@@ -755,35 +708,32 @@ class _CalendarScreenState extends State<CalendarScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('시니어 마음일기'),
+        title: null,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.search),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => const SearchDiaryScreen(),
+                  ),
+              );
+            },
+            child: Text("검색"),
+          ),
+          SizedBox(width: 8),
+          ElevatedButton(
             onPressed: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (context) => const SearchDiaryScreen(),),
+                MaterialPageRoute(
+                  builder: (_) => const EmotionStatsScreen(),
+                ),
               );
             },
+            child: Text("통계"),
           ),
-          IconButton(
-            icon: Icon(Icons.pie_chart),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const EmotionStatsScreen(),),
-              );
-            },
-          ),
-          RoleToggle(
-            currentRole: _currentRole,
-            onRoleChanged: (newRole) {
-              setState(() {
-                _currentRole = newRole;
-                print(' 현재 역할: $_currentRole');
-              });
-            },
-          ),
+          SizedBox(width: 12),
         ElevatedButton(
           onPressed: () {
             Navigator.push(
@@ -795,14 +745,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
           },
           child: Text("보호자 등록"),
         ),
-          TextButton(
-            onPressed: () async {
-              await clearGuardianModeInfo();
-              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("시니어 모드로 전환됨")));
-              setState(() {}); // UI 재빌드
-            },
-            child: Text("🔄 시니어 모드로 전환", style: TextStyle(color: Colors.white)),
-          ),
         ],
       ),
       body: Column(
@@ -1047,27 +989,30 @@ class _EmotionInputScreenState extends State<EmotionInputScreen> {
           children: [
             Text('오늘 기분은 어땠나요?', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
             const SizedBox(height: 24),
-            EmotionButton(
-              emoji: '😊', label: '기분 좋음', color: Colors.green.shade300,
-              onTap: () => setState(() => _selectedEmotion = '기분 좋음'),
-              selected: _selectedEmotion == '기분 좋음',
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                EmotionButton(
+                  emoji: '😊', label: '기분 좋음', color: Colors.lightBlue.shade200,
+                  onTap: () => setState(() => _selectedEmotion = '기분 좋음'),
+                  selected: _selectedEmotion == '기분 좋음',
+                ),
+                EmotionButton(
+                  emoji: '😐', label: '보통', color: const Color(0xFFE6D3B3),
+                  onTap: () => setState(() => _selectedEmotion = '보통'),
+                  selected: _selectedEmotion == '보통',
+                ),
+                EmotionButton(
+                  emoji: '😞', label: '기분 안 좋음', color: Colors.grey.shade400,
+                  onTap: () => setState(() => _selectedEmotion = '기분 안 좋음'),
+                  selected: _selectedEmotion == '기분 안 좋음',
+                ),
+              ],
             ),
-            const SizedBox(height: 12),
-            EmotionButton(
-              emoji: '😐', label: '보통', color: Colors.grey.shade400,
-              onTap: () => setState(() => _selectedEmotion = '보통'),
-              selected: _selectedEmotion == '보통',
-            ),
-            const SizedBox(height: 12),
-            EmotionButton(
-              emoji: '😞', label: '기분 안 좋음', color: Colors.red.shade200,
-              onTap: () => setState(() => _selectedEmotion = '기분 안 좋음'),
-              selected: _selectedEmotion == '기분 안 좋음',
-            ),
-            const SizedBox(height: 32),
+            const SizedBox(height: 24),
             TextField(
               controller: _diaryController,
-              maxLines: 5,
+              maxLines: 10,
               decoration: InputDecoration(
                 hintText: '오늘 하루를 간단히 기록해보세요',
                 border: OutlineInputBorder(),
@@ -1078,7 +1023,8 @@ class _EmotionInputScreenState extends State<EmotionInputScreen> {
               onPressed: _saveData,
               child: Text('저장하기'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blueAccent,
+                backgroundColor: Colors.indigo.shade400,
+                foregroundColor: Colors.white,
                 padding: EdgeInsets.symmetric(horizontal: 48, vertical: 16),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -1110,20 +1056,24 @@ class EmotionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton(
-        onPressed: onTap,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: selected ? Colors.black54 : color,
-          padding: const EdgeInsets.symmetric(vertical: 20),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 100,
+        height: 100,
+        decoration: BoxDecoration(
+          color: selected
+              ? color.withValues(alpha: 1.0)
+              : color.withValues(alpha: 0.6),
+          borderRadius: BorderRadius.circular(12),
+          border: selected ? Border.all(color: Colors.black, width: 2) : null,
         ),
         child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(emoji, style: const TextStyle(fontSize: 36)),
-            const SizedBox(height: 8),
-            Text(label, style: const TextStyle(fontSize: 18)),
+            Text(emoji, style: TextStyle(fontSize: 32)),
+            SizedBox(height: 8),
+            Text(label, style: TextStyle(fontSize: 14)),
           ],
         ),
       ),
