@@ -1,6 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.khj.senior_diary">
     <application
-        android:label="senior_mind_diary_app"
+        android:label="시니어 마음일기"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
