@@ -14,6 +14,16 @@ import 'dart:math';
 import 'package:flutter/services.dart';
 import 'package:senior_mind_diary_app/globals.dart' as globals;
 
+bool isSameOrBeforeToday(DateTime day) {
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day); // 오늘 날짜 (00:00:00)
+
+  final localDay = day.toLocal();
+  final justDay = DateTime(localDay.year, localDay.month, localDay.day); // 선택한 날짜 (00:00:00)
+
+  return !justDay.isAfter(today);
+}
+
 Future<void> loadGuardianModeInfo() async {
   final prefs = await SharedPreferences.getInstance();
   globals.isGuardianMode = prefs.getBool('isGuardianMode') ?? false;
@@ -642,6 +652,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
     _loadEmotionData(); // 앱 실행 시 감정 데이터 불러오기
     _debugPrintAppDir(); // 콘솔에 경로 출력
 
+    _selectedDay = DateTime.now();
+
     emotionDataNotifier.addListener((){
       print('감정 데이터 변경됨: ${emotionDataNotifier.value}');
       setState(() {
@@ -706,52 +718,88 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // for test. 지울 예정!!!
+    //globals.isGuardianMode = true;
+
     return Scaffold(
       appBar: AppBar(
         title: null,
         actions: [
-          ElevatedButton(
-            onPressed: () {
-              Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (_) => const SearchDiaryScreen(),
+          Padding(
+            padding: const EdgeInsets.only(right: 8.0),
+            child: Row(
+              children: [
+                // 검색 버튼
+                ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const SearchDiaryScreen()),
+                    );
+                  },
+                  icon: Icon(Icons.search, size: 20),
+                  label: Text('검색'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.grey.shade300,
+                    foregroundColor: Colors.black,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   ),
-              );
-            },
-            child: Text("검색"),
-          ),
-          SizedBox(width: 8),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const EmotionStatsScreen(),
                 ),
-              );
-            },
-            child: Text("통계"),
+                SizedBox(width: 8),
+
+                // 통계 버튼
+                ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const EmotionStatsScreen()),
+                    );
+                  },
+                  icon: Icon(Icons.bar_chart, size: 20),
+                  label: Text('통계'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.grey.shade300,
+                    foregroundColor: Colors.black,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  ),
+                ),
+                SizedBox(width: 8),
+
+                // 보호자 등록 버튼
+                ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => RoleSelectScreen()),
+                    );
+                  },
+                  icon: Icon(Icons.family_restroom, size: 20),
+                  label: Text('보호자 등록'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue.shade100,
+                    foregroundColor: Colors.black,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  ),
+                ),
+              ],
+            ),
           ),
-          SizedBox(width: 12),
-        ElevatedButton(
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => RoleSelectScreen(),
-              ),
-            );
-          },
-          child: Text("보호자 등록"),
-        ),
         ],
       ),
       body: Column(
         children: [
           // 감정 최빈값 상단 표시
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 16),
+          /*Padding(
+            padding: const EdgeInsets.only(top: 16),
             child: Column(
               children: [
               Text(
@@ -765,7 +813,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
               ),
               ],
             ),
-          ),
+          ),*/
 
       // 캘린더
       ValueListenableBuilder(
@@ -777,13 +825,36 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 lastDay: DateTime.utc(2030, 12, 31),
                 focusedDay: _focusedDay,
 
-                selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
-                enabledDayPredicate: (day) => !day.isAfter(DateTime.now()),
+                calendarFormat: CalendarFormat.month,
+                availableCalendarFormats: const {
+                  CalendarFormat.month: 'Month',
+                },
+
+                selectedDayPredicate: (day) {
+                  if (_selectedDay == null) return false;
+                  return isSameDay(_selectedDay, day);
+                },
+                enabledDayPredicate: (day) => isSameOrBeforeToday(day),
+
+                rowHeight: 60,
+                daysOfWeekHeight: 32,
+                daysOfWeekStyle: DaysOfWeekStyle(
+                  weekdayStyle: TextStyle(fontSize: 14),
+                  weekendStyle: TextStyle(fontSize: 14),
+                ),
+
                 calendarStyle: CalendarStyle(
                   disabledTextStyle: TextStyle(color: Colors.grey), // 미래는 회색
                 ),
                 onDaySelected: (selectedDay, focusedDay) async {
-                  if (selectedDay.isAfter(DateTime.now())) return; // 미래면 클릭 무시
+                  print('Selected Day (local): ${selectedDay.toLocal()}');
+                  print('Today: ${DateTime.now()}');
+
+                  if (!isSameOrBeforeToday(selectedDay)) {
+                    print('Selected day is in the future.');
+                    return;
+                  }
+                  print('Selected day is OK.');
 
                   setState(() {
                     _selectedDay = selectedDay;
@@ -807,14 +878,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       ),
                     );
 
-
                     // 데이터 다시 불러오기
                     await _loadEmotionData();
-
-                    // 강제로 selectedDay를 한번 무효화했다가 다시 설정
-                    setState(() {
-                      _selectedDay = null;
-                    });
 
                     Future.delayed(Duration(milliseconds: 50), () {
                       setState(() {
@@ -840,12 +905,30 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         emoji = '😞';
                     }
 
+                    // shrinkFactor 계산
+                    const baseRowHeight = 60.0;
+                    final shrinkFactor = 55.0 / baseRowHeight;
+
                       return Column(
-                        mainAxisAlignment: MainAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text('${day.day}',
-                              style: TextStyle(fontWeight: isSameDay(day, DateTime.now()) ? FontWeight.bold : FontWeight.normal)),
-                          if (emoji.isNotEmpty) Text(emoji),
+                          Container(
+                            padding: EdgeInsets.all(8 * shrinkFactor),
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                            ),
+                          child: Text('${day.day}',
+                              style: TextStyle(fontWeight: isSameDay(day, DateTime.now())
+                                  ? FontWeight.bold : FontWeight.normal,
+                              fontSize: 14.0 * shrinkFactor,),),),
+                          Padding(
+                            padding: const EdgeInsets.only(top: 1.0),
+                            child: Text(
+                              emoji.isNotEmpty ? emoji : ' ',
+                              style: TextStyle(fontSize: 18.0 * shrinkFactor),
+                            ),
+                          ),
                         ],
                       );
                     },
@@ -856,16 +939,78 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     String emoji = '';
 
                     if (emotion != null) {
+                      if (emotion == '기분 좋음')
+                        emoji = '😊';
+                      else if (emotion == '보통')
+                        emoji = '😐';
+                      else
+                        emoji = '😞';
+                    }
+
+                    const baseRowHeight = 60.0;
+                    final shrinkFactor = 55.0 / baseRowHeight;
+
+                    return Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          padding: EdgeInsets.all(8.0 * shrinkFactor),
+                          decoration: BoxDecoration(shape: BoxShape.circle),
+                          child: Text('${day.day}',
+                              style: TextStyle(fontWeight: FontWeight.bold,
+                              fontSize: 14.0 * shrinkFactor,)),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.only(top: 1.0),
+                          child: Text(emoji.isNotEmpty ? emoji : ' ',
+                              style: TextStyle(fontSize: 18.0 * shrinkFactor),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+
+                  selectedBuilder: (context, day, focusedDay) {
+                    final dateStr = formatDate(day);
+                    final emotion = emotionDataNotifier.value[dateStr]?['emotion'];
+                    String emoji = '';
+
+                    if (emotion != null) {
                       if (emotion == '기분 좋음') emoji = '😊';
                       else if (emotion == '보통') emoji = '😐';
                       else emoji = '😞';
                     }
 
+                    const baseRowHeight = 60.0;
+                    final shrinkFactor = 55.0 / baseRowHeight;
+
+                    bool isToday = isSameDay(day, DateTime.now());
+
                     return Column(
-                      mainAxisAlignment: MainAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text('${day.day}', style: TextStyle(fontWeight: FontWeight.bold)),
-                        if (emoji.isNotEmpty) Text(emoji),
+                        Container(
+                          padding : EdgeInsets.all(8.0 * shrinkFactor),
+                          decoration: BoxDecoration(
+                            color: Colors.blue,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Text('${day.day}',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
+                              fontSize: 14.0 * shrinkFactor,
+                            ),
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.only(top: 1.0),
+                          child: Text(emoji.isNotEmpty ? emoji : ' ',
+                            style: TextStyle(fontSize: 18.0 * shrinkFactor),
+                          ),
+                        ),
                       ],
                     );
                   },
@@ -873,20 +1018,68 @@ class _CalendarScreenState extends State<CalendarScreen> {
               );
             },
           ),
+
           if (globals.isGuardianMode && _viewingEmotion != null)
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text("🗓️ 선택한 날짜: ${formatDate(_selectedDay!)}", style: TextStyle(fontSize: 16)),
-                  SizedBox(height: 8),
-                  Text("🙂 감정: $_viewingEmotion", style: TextStyle(fontSize: 18)),
-                  SizedBox(height: 8),
-                  Text("📓 일기 내용:", style: TextStyle(fontWeight: FontWeight.bold)),
-                  Text(_viewingDiary ?? '', style: TextStyle(fontSize: 16)),
-                ],
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 24.0),
+                child: SingleChildScrollView(
+                  child: Container(
+                    padding: EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: Color(0xFFF4F0FA),
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black12,
+                          blurRadius: 6,
+                          offset: Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start, // 왼쪽 정렬
+                    children: [
+                      // 날짜 + 감정 Row
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(Icons.calendar_today, size: 20),
+                              const SizedBox(width: 8),
+                              Text(
+                                formatDate(_selectedDay!),
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                          Text(
+                            //_viewingEmotion ?? '',
+                            getEmotionEmoji(_viewingEmotion ?? ''),
+                            style: TextStyle(fontSize: 20),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+
+                      // 일기 본문
+                      Text(
+                        _viewingDiary ?? '작성된 일기가 없습니다.',
+                        style: TextStyle(
+                          fontSize: 16,
+                          height: 1.8,
+                        ),
+                        textAlign: TextAlign.start,
+                      ),
+                    ],
+                  ),
+                ),
               ),
+            ),
             ),
         ],
       ),
