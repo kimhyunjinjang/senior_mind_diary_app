@@ -38,7 +38,6 @@ Future<void> saveGuardianModeInfo(String seniorUID) async {
   // 전역 변수도 함께 업데이트
   globals.isGuardianMode = true;
   globals.linkedUserId = seniorUID;
-  print('⚠️ 보호자 인증 성공! 정보 저장: isGuardianMode=${globals.isGuardianMode}, linkedUserId=${globals.linkedUserId}');
 }
 
 class InviteCodeInputScreen extends StatefulWidget {
@@ -66,28 +65,34 @@ class _InviteCodeInputScreenState extends State<InviteCodeInputScreen> {
     final viewerUid = FirebaseAuth.instance.currentUser!.uid;
 
     if (ownerUid == viewerUid) {
-      print("⚠️ [테스트] 본인 코드 입력: 연결 허용됨");
-      // 테스트이므로 연결은 그대로 진행. 실제 배포 전엔 반드시 차단으로 되돌려야 함!
-      // setState(() => _error = "본인의 코드입니다.");
-      // return;
+       setState(() => _error = "본인의 코드입니다.");
+       return;
     }
 
-    // 보호자로 등록
-    await FirebaseFirestore.instance
-        .collection('users')
-        .doc(ownerUid)
-        .set({
-      'sharedWith': FieldValue.arrayUnion([viewerUid])
-    }, SetOptions(merge: true));
+    print('viewerUid: $viewerUid');
 
-    // 로컬에 보호자 모드 정보 저장
-    await saveGuardianModeInfo(ownerUid);
+    try {
+      // 보호자로 등록
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(ownerUid)
+          .set({
+        'sharedWith': FieldValue.arrayUnion([viewerUid])
+      }, SetOptions(merge: true));
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("연결이 완료되었습니다.")),
-    );
+      // 로컬에 보호자 모드 정보 저장
+      await saveGuardianModeInfo(ownerUid);
 
-    Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("연결이 완료되었습니다.")),
+      );
+
+      Navigator.pop(context);
+    } catch (e, stacktrace) {
+      print('🔥 Firestore 쓰기 에러: $e');
+      print('🔥 Stacktrace: $stacktrace');
+      setState(() => _error = "연결 중 문제가 발생했습니다.");
+    }
   }
 
   @override
@@ -246,9 +251,21 @@ Future<Map<String, Map<String, String>>> loadEmotionDataFromFirestore() async {
   final user = FirebaseAuth.instance.currentUser;
   if (user == null) return {};
 
+  final seniorSnapshot = await FirebaseFirestore.instance
+      .collection('users')
+      .where('sharedWith', arrayContains: user.uid)  // 🔥 보호자 UID를 가진 시니어 찾기
+      .get();
+
+  if (seniorSnapshot.docs.isEmpty) {
+    // 보호자 연결된 시니어 없으면 빈 Map 리턴
+    return {};
+  }
+  final seniorUid = seniorSnapshot.docs.first.id;  // 🔥 시니어 UID 얻기
+
+  // 시니어의 일기 가져오기
   final snapshot = await FirebaseFirestore.instance
       .collection('users')
-      .doc(user.uid)
+      .doc(seniorUid)
       .collection('diaries')
       .get();
 
@@ -471,15 +488,8 @@ void main() async {
 }
 
 Future<void> _signInAnonymously() async {
-  try {
     final userCredential = await FirebaseAuth.instance.signInAnonymously();
     final user = userCredential.user;
-    if (user != null) {
-      print('익명 로그인 성공: ${user.uid}');
-    }
-  } catch (e) {
-    print('익명 로그인 실패: $e');
-  }
 }
 
 Future<void> saveEmotionAndNote({
@@ -487,33 +497,23 @@ Future<void> saveEmotionAndNote({
   required String emotion,    // 예: 'happy', 'neutral', 'sad'
   required String note,       // 예: '산책을 해서 기분이 좋았어요'
 }) async {
-  print('📌 saveEmotionAndNote 시작됨');
 
   final user = FirebaseAuth.instance.currentUser;
   if (user == null) {
-    print('로그인된 사용자가 없습니다.');
     return;
   }
 
   final uid = user.uid;
-  print('🧑 현재 UID: $uid');
-
-  try {
-    await FirebaseFirestore.instance
-        .collection('users')
-        .doc(uid)
-        .collection('diaries')
-        .doc(date)
-        .set({
-      'emotion': emotion,
-      'note': note,
-      'timestamp': FieldValue.serverTimestamp(),
-    });
-
-    print('Firestore 저장 성공');
-  } catch (e) {
-    print('Firestore 저장 실패: $e');
-  }
+  await FirebaseFirestore.instance
+      .collection('users')
+      .doc(uid)
+      .collection('diaries')
+      .doc(date)
+      .set({
+    'emotion': emotion,
+    'note': note,
+    'timestamp': FieldValue.serverTimestamp(),
+  });
 }
 
 class MyApp extends StatelessWidget {
@@ -655,7 +655,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
     _selectedDay = DateTime.now();
 
     emotionDataNotifier.addListener((){
-      print('감정 데이터 변경됨: ${emotionDataNotifier.value}');
       setState(() {
         _mostFrequentEmotion = getMostFrequentEmotion(emotionDataNotifier.value);
       });
@@ -670,7 +669,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   void _debugPrintAppDir() async {
     final dir = await getApplicationSupportDirectory();
-    print('🗂️ 앱 저장 경로: ${dir.path}');
   }
 
   String getMostFrequentEmotion(Map<String, Map<String, String>> data) {
@@ -718,9 +716,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // for test. 지울 예정!!!
-    //globals.isGuardianMode = true;
-
     return Scaffold(
       appBar: AppBar(
         title: null,
@@ -847,14 +842,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   disabledTextStyle: TextStyle(color: Colors.grey), // 미래는 회색
                 ),
                 onDaySelected: (selectedDay, focusedDay) async {
-                  print('Selected Day (local): ${selectedDay.toLocal()}');
-                  print('Today: ${DateTime.now()}');
-
                   if (!isSameOrBeforeToday(selectedDay)) {
-                    print('Selected day is in the future.');
                     return;
                   }
-                  print('Selected day is OK.');
 
                   setState(() {
                     _selectedDay = selectedDay;
