@@ -14,6 +14,13 @@ import 'dart:math';
 import 'package:flutter/services.dart';
 import 'package:senior_mind_diary_app/globals.dart' as globals;
 
+class AccountRegisterScreen extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(appBar: AppBar(title: Text('계정 등록 화면')), body: Center(child: Text('계정 등록 화면')));
+  }
+}
+
 bool isSameOrBeforeToday(DateTime day) {
   final now = DateTime.now();
   final today = DateTime(now.year, now.month, now.day); // 오늘 날짜 (00:00:00)
@@ -393,6 +400,10 @@ class EmotionStatsScreen extends StatelessWidget {
         raw.map((k, v) => MapEntry(k, Map<String, String>.from(v))),
       );
     }
+    else {
+      // SharedPreferences에 없으면, Firestore에서 가져오기
+      data = await loadEmotionDataFromFirestore();
+    }
 
     // 초기화
     Map<String, double> counts = {
@@ -541,7 +552,18 @@ class MyApp extends StatelessWidget {
         //
         // This works for code too, not just values: Most code changes can be
         // tested with just a hot reload.
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        popupMenuTheme: PopupMenuThemeData(
+          color: Colors.grey.shade100, // 드롭다운 배경 색
+          textStyle: TextStyle(color: Colors.black, fontSize: 16), // 드롭다운 글자
+          elevation: 4,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+        ),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.grey,
+          brightness: Brightness.light,
+        ),
       ),
       //home: const MyHomePage(title: 'Flutter Demo Home Page'),
       home: CalendarScreen(),
@@ -718,74 +740,95 @@ class _CalendarScreenState extends State<CalendarScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: null,
+        title: const SizedBox.shrink(),
         actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 8.0),
-            child: Row(
-              children: [
-                // 검색 버튼
-                ElevatedButton.icon(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const SearchDiaryScreen()),
-                    );
-                  },
-                  icon: Icon(Icons.search, size: 20),
-                  label: Text('검색'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.grey.shade300,
-                    foregroundColor: Colors.black,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          Container(
+            margin: EdgeInsets.only(right: 16),
+            child: PopupMenuButton<String>(
+              offset: Offset(0, 40),
+              onSelected: (value) {
+                if (value == '검색') {
+                  Navigator.push(context, MaterialPageRoute(
+                    builder: (context) => SearchDiaryScreen(),
+                  ));
+                } else if (value == '통계') {
+                  Navigator.push(context, MaterialPageRoute(
+                    builder: (context) => EmotionStatsScreen(),
+                  ));
+                } else if (value == '보호자 등록') {
+                  Navigator.push(context, MaterialPageRoute(
+                    builder: (context) => RoleSelectScreen(),
+                  ));
+                } else if (value == '계정 등록') {
+                  Navigator.push(context, MaterialPageRoute(
+                    builder: (context) => AccountRegisterScreen(),
+                  ));
+                }
+              },
+              itemBuilder: (context) => [
+                PopupMenuItem(
+                  value: '검색',
+                  child: Row(
+                    children: [
+                      Icon(Icons.search, color: Colors.black),
+                      SizedBox(width: 10),
+                      Text('검색'),
+                    ],
                   ),
                 ),
-                SizedBox(width: 8),
-
-                // 통계 버튼
-                ElevatedButton.icon(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const EmotionStatsScreen()),
-                    );
-                  },
-                  icon: Icon(Icons.bar_chart, size: 20),
-                  label: Text('통계'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.grey.shade300,
-                    foregroundColor: Colors.black,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                PopupMenuItem(
+                  value: '통계',
+                  child: Row(
+                    children: [
+                      Icon(Icons.bar_chart, color: Colors.black),
+                      SizedBox(width: 10),
+                      Text('통계'),
+                    ],
                   ),
                 ),
-                SizedBox(width: 8),
-
-                // 보호자 등록 버튼
-                ElevatedButton.icon(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => RoleSelectScreen()),
-                    );
-                  },
-                  icon: Icon(Icons.family_restroom, size: 20),
-                  label: Text('보호자 등록'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue.shade100,
-                    foregroundColor: Colors.black,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                PopupMenuItem(
+                  value: '보호자 등록',
+                  child: Row(
+                    children: [
+                      Icon(Icons.family_restroom, color: Colors.black),
+                      SizedBox(width: 10),
+                      Text('보호자 등록'),
+                    ],
+                  ),
+                ),
+                PopupMenuItem(
+                  value: '계정 등록',
+                  child: Row(
+                    children: [
+                      Icon(Icons.person_add, color: Colors.black),
+                      SizedBox(width: 10),
+                      Text('계정 등록'),
+                    ],
                   ),
                 ),
               ],
+              child: Container(
+                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade200,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.menu, color: Colors.black),
+                    SizedBox(width: 8),
+                    Text(
+                      '메뉴',
+                      style: TextStyle(
+                        fontSize: 18,
+                        color: Colors.black,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
         ],
@@ -1139,10 +1182,6 @@ class _EmotionInputScreenState extends State<EmotionInputScreen> {
     await prefs.setString('emotionData', json.encode(data));
     emotionDataNotifier.value = Map<String, Map<String, String>>.from(
         data.map((k, v) => MapEntry(k, Map<String, String>.from(v)))
-    );
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('감정과 일기가 저장되었습니다.')),
     );
 
     // Firestore 저장
