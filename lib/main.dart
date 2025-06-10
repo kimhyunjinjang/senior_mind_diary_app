@@ -14,10 +14,207 @@ import 'dart:math';
 import 'package:flutter/services.dart';
 import 'package:senior_mind_diary_app/globals.dart' as globals;
 
-class AccountRegisterScreen extends StatelessWidget {
+class AccountRegisterScreen extends StatefulWidget {
+  const AccountRegisterScreen({Key? key}) : super(key: key);
+
+  @override
+  State<AccountRegisterScreen> createState() => _AccountRegisterScreenState();
+}
+
+class _AccountRegisterScreenState extends State<AccountRegisterScreen> {
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
+
+  String? _emailError;
+  String? _passwordError;
+  String? _confirmPasswordError;
+
+  bool _isLoading = false;
+
+  Future<void> _register() async {
+    setState(() {
+      _emailError = null;
+      _passwordError = null;
+      _confirmPasswordError = null;
+    });
+
+    if (_formKey.currentState?.validate() ?? false) {
+      if (_passwordController.text != _confirmPasswordController.text) {
+        setState(() {
+          _confirmPasswordError = '비밀번호가 일치하지 않습니다';
+        });
+        return;
+      }
+
+      setState(() {
+        _isLoading = true;
+      });
+
+      try {
+        final credential = EmailAuthProvider.credential(
+          email: _emailController.text.trim(),
+          password: _passwordController.text.trim(),
+        );
+
+        final user = FirebaseAuth.instance.currentUser;
+
+        if (user != null && user.isAnonymous) {
+          // 익명 계정 → 이메일 계정으로 연결 (UID 유지)
+          await user.linkWithCredential(credential);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('이미 계정이 등록되어 있습니다.')),
+          );
+          return;
+        }
+        // 등록 성공 시 메인 화면으로 이동
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => CalendarScreen()),
+        );
+      } on FirebaseAuthException catch (e) {
+        setState(() {
+          if (e.code == 'email-already-in-use') {
+            _emailError = '이미 사용 중인 이메일입니다';
+          } else if (e.code == 'weak-password') {
+            _passwordError = '비밀번호는 6자 이상 입력하세요';
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(e.message ?? '등록에 실패했습니다')),
+            );
+          }
+        });
+      } finally {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(appBar: AppBar(title: Text('계정 등록 화면')), body: Center(child: Text('계정 등록 화면')));
+    return Scaffold(
+      appBar: AppBar(title: const Text('계정 등록')),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(32, 28, 32, 0),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                '계정을 등록하면 앱을 지우거나 휴대폰을 바꿔도 '
+                    '일기를 다시 찾을 수 있습니다.\n\n'
+                    '비밀번호는 이메일 비밀번호가 아닌 '
+                    '이 앱을 사용할 때 사용할 비밀번호입니다.',
+                textAlign: TextAlign.left,
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.black54,
+                ),
+              ),
+              const SizedBox(height: 32),
+              TextFormField(
+                controller: _emailController,
+                decoration: InputDecoration(
+                  labelText: '이메일',
+                  border: const OutlineInputBorder(),
+                  errorText: _emailError,
+                ),
+                keyboardType: TextInputType.emailAddress,
+                validator: (value) =>
+                value != null && value.contains('@') ? null : '올바른 이메일을 입력하세요',
+              ),
+              const SizedBox(height: 20),
+              TextFormField(
+                controller: _passwordController,
+                decoration: InputDecoration(
+                  labelText: '비밀번호',
+                  border: const OutlineInputBorder(),
+                  errorText: _passwordError,
+                ),
+                obscureText: false, // 항상 보이게!
+                validator: (value) =>
+                value != null && value.length >= 6 ? null : '비밀번호는 6자 이상 입력하세요',
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                '비밀번호는 6자 이상 입력하세요.',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.black45,
+                ),
+              ),
+              const SizedBox(height: 20),
+              TextFormField(
+                controller: _confirmPasswordController,
+                decoration: InputDecoration(
+                  labelText: '비밀번호 확인',
+                  border: const OutlineInputBorder(),
+                  errorText: _confirmPasswordError,
+                ),
+                obscureText: false, // 항상 보이게!
+                validator: (value) =>
+                value != null && value.isNotEmpty ? null : '비밀번호 확인을 입력하세요',
+              ),
+              const SizedBox(height: 40),
+              _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : SizedBox(
+                height: 50,
+                child: ElevatedButton(
+                  onPressed: _register,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  child: const Text(
+                    '등록',
+                    style: TextStyle(fontSize: 20),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              TextButton(
+                onPressed: () {
+                  // 로그인 화면으로 이동
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(builder: (context) => const LoginScreen()),
+                  );
+                },
+                child: const Text(
+                  '계정이 있으신가요? 로그인하기',
+                  style: TextStyle(fontSize: 16),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// 임시 로그인 화면
+class LoginScreen extends StatelessWidget {
+  const LoginScreen({Key? key}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      body: Center(
+        child: Text(
+          '로그인 화면',
+          style: TextStyle(fontSize: 32),
+        ),
+      ),
+    );
   }
 }
 
@@ -258,21 +455,28 @@ Future<Map<String, Map<String, String>>> loadEmotionDataFromFirestore() async {
   final user = FirebaseAuth.instance.currentUser;
   if (user == null) return {};
 
-  final seniorSnapshot = await FirebaseFirestore.instance
-      .collection('users')
-      .where('sharedWith', arrayContains: user.uid)  // 🔥 보호자 UID를 가진 시니어 찾기
-      .get();
+  String targetUid;
 
-  if (seniorSnapshot.docs.isEmpty) {
-    // 보호자 연결된 시니어 없으면 빈 Map 리턴
-    return {};
+  if (globals.isGuardianMode) {
+    // 보호자 모드: sharedWith 배열에서 시니어 UID 찾기
+    final seniorSnapshot = await FirebaseFirestore.instance
+        .collection('users')
+        .where('sharedWith', arrayContains: user.uid)
+        .get();
+
+    if (seniorSnapshot.docs.isEmpty) {
+      return {};  // 보호자와 연결된 시니어 없음
+    }
+    targetUid = seniorSnapshot.docs.first.id;
+  } else {
+    // 보호자가 아니면 → 일기 쓸 수 있는 사람 → 시니어처럼 간주
+    targetUid = user.uid;
   }
-  final seniorUid = seniorSnapshot.docs.first.id;  // 🔥 시니어 UID 얻기
 
-  // 시니어의 일기 가져오기
+  // targetUid에 해당하는 일기 데이터 가져오기
   final snapshot = await FirebaseFirestore.instance
       .collection('users')
-      .doc(seniorUid)
+      .doc(targetUid)
       .collection('diaries')
       .get();
 
