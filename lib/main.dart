@@ -201,17 +201,110 @@ class _AccountRegisterScreenState extends State<AccountRegisterScreen> {
   }
 }
 
-// 임시 로그인 화면
-class LoginScreen extends StatelessWidget {
-  const LoginScreen({Key? key}) : super(key: key);
+class LoginScreen extends StatefulWidget {
+  const LoginScreen({super.key});
+
+  @override
+  State<LoginScreen> createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends State<LoginScreen> {
+  final TextEditingController emailController = TextEditingController();
+  final TextEditingController passwordController = TextEditingController();
+  String errorMessage = '';
+
+  Future<void> signIn() async {
+    try {
+      await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: emailController.text.trim(),
+        password: passwordController.text.trim(),
+      );
+
+      // 로그인 성공 → 메인화면 이동
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => CalendarScreen()),
+      );
+    } on FirebaseAuthException catch (e) {
+      setState(() {
+        if (e.code == 'user-not-found') {
+          errorMessage = '등록되지 않은 이메일입니다.';
+        } else if (e.code == 'wrong-password') {
+          errorMessage = '비밀번호가 틀렸습니다.';
+        } else {
+          errorMessage = '로그인에 실패했습니다. 다시 시도해주세요.';
+        }
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
-      body: Center(
-        child: Text(
-          '로그인 화면',
-          style: TextStyle(fontSize: 32),
+    return Scaffold(
+      resizeToAvoidBottomInset: true,
+      appBar: AppBar(title: const Text('로그인')),
+      body: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              padding: const EdgeInsets.all(24.0),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: IntrinsicHeight(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const SizedBox(height: 18),
+                      const Text(
+                        '이전에 등록한 계정으로 로그인해주세요.',
+                        style: TextStyle(fontSize: 16),
+                      ),
+                      const SizedBox(height: 24),
+                      TextField(
+                        controller: emailController,
+                        decoration: const InputDecoration(
+                          labelText: '이메일',
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: passwordController,
+                        obscureText: false,
+                        decoration: const InputDecoration(
+                          labelText: '비밀번호',
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      if (errorMessage.isNotEmpty)
+                        Text(errorMessage, style: const TextStyle(
+                            color: Colors.red)),
+                      const SizedBox(height: 24),
+                      ElevatedButton(
+                        onPressed: signIn,
+                        child: const Text('로그인'),
+                      ),
+                      const SizedBox(height: 1),
+                      Center(
+                        child: TextButton(
+                          onPressed: () {
+                            Navigator.pushReplacement(
+                              context,
+                              MaterialPageRoute(
+                                builder: (
+                                    context) => const AccountRegisterScreen(),
+                              ),
+                            );
+                          },
+                          child: const Text('계정이 없으신가요? 등록하기'),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
         ),
       ),
     );
@@ -695,8 +788,12 @@ void main() async {
   await Firebase.initializeApp(
     options: CustomFirebaseOptions.currentPlatform,
   );
-  // 익명 로그인 시도
-  await _signInAnonymously();
+  // 이미 로그인된 계정이 없을 때만 익명 로그인 시도
+  final currentUser = FirebaseAuth.instance.currentUser;
+  if (currentUser == null) {
+    await _signInAnonymously();
+  }
+
   // 보호자 모드 정보 로딩
   await loadGuardianModeInfo();
   runApp(const MyApp());
@@ -875,6 +972,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   @override
   void initState(){
     super.initState();
+    _loadEmotionDataIfUserExists(); // 디버그용
     _loadEmotionData(); // 앱 실행 시 감정 데이터 불러오기
     _debugPrintAppDir(); // 콘솔에 경로 출력
 
@@ -885,6 +983,17 @@ class _CalendarScreenState extends State<CalendarScreen> {
         _mostFrequentEmotion = getMostFrequentEmotion(emotionDataNotifier.value);
       });
     });
+  }
+
+  void _loadEmotionDataIfUserExists() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      print("❌ 현재 로그인된 유저 없음 (currentUser == null)");
+      return;
+    }
+    print("✅ 현재 로그인된 UID: ${user.uid}");
+    final data = await loadEmotionDataFromFirestore();
+    emotionDataNotifier.value = data;
   }
 
   Future<void> _loadEmotionData() async {
