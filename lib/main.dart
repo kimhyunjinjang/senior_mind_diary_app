@@ -14,6 +14,99 @@ import 'dart:math';
 import 'package:flutter/services.dart';
 import 'package:senior_mind_diary_app/globals.dart' as globals;
 
+class ForgotPasswordScreen extends StatefulWidget {
+  const ForgotPasswordScreen({super.key});
+
+  @override
+  State<ForgotPasswordScreen> createState() => _ForgotPasswordScreenState();
+}
+
+class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
+  final TextEditingController _emailController = TextEditingController();
+  String _message = '';
+  bool _isLoading = false;
+
+  Future<void> _sendResetEmail() async {
+    final email = _emailController.text.trim();
+    if (!email.contains('@')) {
+      setState(() {
+        _message = '올바른 이메일을 입력해주세요.';
+      });
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _message = '';
+    });
+
+    try {
+      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+      setState(() {
+        _message = '비밀번호 재설정 이메일이 전송되었습니다.\n이메일을 확인해주세요.';
+      });
+    } on FirebaseAuthException catch (e) {
+      setState(() {
+        if (e.code == 'user-not-found') {
+          _message = '해당 이메일로 등록된 계정을 찾을 수 없습니다.';
+        } else {
+          _message = '이메일 전송에 실패했습니다. 다시 시도해주세요.';
+        }
+      });
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('비밀번호 찾기')),
+      body: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              '등록된 이메일을 입력하시면 비밀번호 재설정 메일을 보내드립니다.',
+              style: TextStyle(fontSize: 16),
+            ),
+            const SizedBox(height: 24),
+            TextField(
+              controller: _emailController,
+              decoration: const InputDecoration(
+                labelText: '이메일',
+                border: OutlineInputBorder(),
+              ),
+              keyboardType: TextInputType.emailAddress,
+            ),
+            const SizedBox(height: 16),
+            if (_message.isNotEmpty)
+              Text(
+                _message,
+                style: const TextStyle(color: Colors.blue, fontSize: 14),
+              ),
+            const SizedBox(height: 24),
+            _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : ElevatedButton(
+              onPressed: _sendResetEmail,
+              child: const Text('보내기'),
+            ),
+            const SizedBox(height: 16),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('로그인 화면으로 돌아가기'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class AccountRegisterScreen extends StatefulWidget {
   const AccountRegisterScreen({Key? key}) : super(key: key);
 
@@ -275,6 +368,21 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ),
                       const SizedBox(height: 8),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (_) => ForgotPasswordScreen()),
+                            );
+                          },
+                          child: const Text(
+                            '비밀번호를 잊으셨나요?',
+                            style: TextStyle(fontSize: 14),
+                          ),
+                        ),
+                      ),
                       if (errorMessage.isNotEmpty)
                         Text(errorMessage, style: const TextStyle(
                             color: Colors.red)),
@@ -968,6 +1076,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   String? _viewingEmotion;
   String? _viewingDiary;
+  late final VoidCallback _listener;
 
   @override
   void initState(){
@@ -978,11 +1087,22 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
     _selectedDay = DateTime.now();
 
-    emotionDataNotifier.addListener((){
+    _listener = () {
+      if (!mounted) return;
       setState(() {
         _mostFrequentEmotion = getMostFrequentEmotion(emotionDataNotifier.value);
       });
+    };
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      emotionDataNotifier.addListener(_listener);
     });
+  }
+
+  @override
+  void dispose() {
+    emotionDataNotifier.removeListener(_listener);
+    super.dispose();
   }
 
   void _loadEmotionDataIfUserExists() async {
@@ -1052,6 +1172,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      resizeToAvoidBottomInset: false, // 키보드가 올라와도 달력 줄어들지 않음
       appBar: AppBar(
         title: const SizedBox.shrink(),
         actions: [
@@ -1076,50 +1197,108 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   Navigator.push(context, MaterialPageRoute(
                     builder: (context) => AccountRegisterScreen(),
                   ));
+                } if (value == '로그인') {
+                  Navigator.push(context, MaterialPageRoute(
+                    builder: (_) => const LoginScreen(),
+                  ));
+                } else if (value == '로그아웃') {
+                  showDialog<bool>(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: Text('로그아웃'),
+                      content: Text('정말 로그아웃 하시겠습니까?'),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context, false),
+                          child: Text('취소'),
+                        ),
+                        TextButton(
+                          onPressed: () => Navigator.pop(context, true),
+                          child: Text('로그아웃'),
+                        ),
+                      ],
+                    ),
+                  ).then((confirm) async {
+                    if (confirm == true) {
+                      await FirebaseAuth.instance.signOut();
+                      Navigator.pushAndRemoveUntil(
+                        context,
+                        MaterialPageRoute(builder: (_) => CalendarScreen()),
+                            (route) => false,
+                      );
+                    }
+                  });
                 }
               },
-              itemBuilder: (context) => [
-                PopupMenuItem(
-                  value: '검색',
-                  child: Row(
-                    children: [
-                      Icon(Icons.search, color: Colors.black),
-                      SizedBox(width: 10),
-                      Text('검색'),
-                    ],
+              itemBuilder: (context) {
+                final user = FirebaseAuth.instance.currentUser;
+                return [
+                  PopupMenuItem(
+                    value: '검색',
+                    child: Row(
+                      children: [
+                        Icon(Icons.search, color: Colors.black),
+                        SizedBox(width: 10),
+                        Text('검색'),
+                      ],
+                    ),
                   ),
-                ),
-                PopupMenuItem(
-                  value: '통계',
-                  child: Row(
-                    children: [
-                      Icon(Icons.bar_chart, color: Colors.black),
-                      SizedBox(width: 10),
-                      Text('통계'),
-                    ],
+                  PopupMenuItem(
+                    value: '통계',
+                    child: Row(
+                      children: [
+                        Icon(Icons.bar_chart, color: Colors.black),
+                        SizedBox(width: 10),
+                        Text('통계'),
+                      ],
+                    ),
                   ),
-                ),
-                PopupMenuItem(
-                  value: '보호자 등록',
-                  child: Row(
-                    children: [
-                      Icon(Icons.family_restroom, color: Colors.black),
-                      SizedBox(width: 10),
-                      Text('보호자 등록'),
-                    ],
+                  PopupMenuItem(
+                    value: '보호자 등록',
+                    child: Row(
+                      children: [
+                        Icon(Icons.family_restroom, color: Colors.black),
+                        SizedBox(width: 10),
+                        Text('보호자 등록'),
+                      ],
+                    ),
                   ),
-                ),
-                PopupMenuItem(
-                  value: '계정 등록',
-                  child: Row(
-                    children: [
-                      Icon(Icons.person_add, color: Colors.black),
-                      SizedBox(width: 10),
-                      Text('계정 등록'),
-                    ],
+                  PopupMenuItem(
+                    value: '계정 등록',
+                    child: Row(
+                      children: [
+                        Icon(Icons.person_add, color: Colors.black),
+                        SizedBox(width: 10),
+                        Text('계정 등록'),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                  if (user == null)
+                    PopupMenuItem(
+                      value: '로그인',
+                      child: Row(
+                        children: [
+                          Icon(Icons.login, color: Colors.black),
+                          SizedBox(width: 10),
+                          Text('로그인'),
+                          ],
+                        ),
+                      ),
+                  if (user != null && !user.isAnonymous) ...[
+                    const PopupMenuDivider(),
+                    PopupMenuItem(
+                      value: '로그아웃',
+                      child: Row(
+                        children: [
+                          Icon(Icons.logout, color: Colors.black),
+                          SizedBox(width: 10),
+                          Text('로그아웃'),
+                        ],
+                      ),
+                    ),
+                  ],
+                ];
+              },
               child: Container(
                 padding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 decoration: BoxDecoration(
