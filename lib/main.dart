@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'firebase_options.dart';
 import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
@@ -13,6 +14,8 @@ import 'package:pie_chart/pie_chart.dart';
 import 'dart:math';
 import 'package:flutter/services.dart';
 import 'package:senior_mind_diary_app/globals.dart' as globals;
+import 'dart:async';
+import 'package:senior_mind_diary_app/utils.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
@@ -278,7 +281,8 @@ class _AccountRegisterScreenState extends State<AccountRegisterScreen> {
                   // 로그인 화면으로 이동
                   Navigator.pushReplacement(
                     context,
-                    MaterialPageRoute(builder: (context) => const LoginScreen()),
+                    MaterialPageRoute(
+                        builder: (context) => const LoginScreen()),
                   );
                 },
                 child: const Text(
@@ -374,7 +378,8 @@ class _LoginScreenState extends State<LoginScreen> {
                           onPressed: () {
                             Navigator.push(
                               context,
-                              MaterialPageRoute(builder: (_) => ForgotPasswordScreen()),
+                              MaterialPageRoute(
+                                  builder: (_) => ForgotPasswordScreen()),
                             );
                           },
                           child: const Text(
@@ -424,7 +429,8 @@ bool isSameOrBeforeToday(DateTime day) {
   final today = DateTime(now.year, now.month, now.day); // 오늘 날짜 (00:00:00)
 
   final localDay = day.toLocal();
-  final justDay = DateTime(localDay.year, localDay.month, localDay.day); // 선택한 날짜 (00:00:00)
+  final justDay = DateTime(
+      localDay.year, localDay.month, localDay.day); // 선택한 날짜 (00:00:00)
 
   return !justDay.isAfter(today);
 }
@@ -433,6 +439,7 @@ Future<void> loadGuardianModeInfo() async {
   final prefs = await SharedPreferences.getInstance();
   globals.isGuardianMode = prefs.getBool('isGuardianMode') ?? false;
   globals.linkedUserId = prefs.getString('linkedUserId');
+  globals.lastLinkedUserId = prefs.getString('lastLinkedUserId');
 }
 
 Future<void> saveGuardianModeInfo(String seniorUID) async {
@@ -443,6 +450,7 @@ Future<void> saveGuardianModeInfo(String seniorUID) async {
   // 전역 변수도 함께 업데이트
   globals.isGuardianMode = true;
   globals.linkedUserId = seniorUID;
+  globals.isLinkedNotifier.value = true;
 }
 
 class InviteCodeInputScreen extends StatefulWidget {
@@ -470,11 +478,21 @@ class _InviteCodeInputScreenState extends State<InviteCodeInputScreen> {
     final viewerUid = FirebaseAuth.instance.currentUser!.uid;
 
     if (ownerUid == viewerUid) {
-       setState(() => _error = "본인의 코드입니다.");
-       return;
+      setState(() => _error = "본인의 코드입니다.");
+      return;
     }
 
     print('viewerUid: $viewerUid');
+
+    final userDoc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(ownerUid)
+        .get();
+    final alreadyLinked = userDoc.data()?['sharedWith'] != null;
+    if (alreadyLinked) {
+      setState(() => _error = "이미 연결된 사람이 있습니다.");
+      return;
+    }
 
     try {
       // 보호자로 등록
@@ -482,7 +500,7 @@ class _InviteCodeInputScreenState extends State<InviteCodeInputScreen> {
           .collection('users')
           .doc(ownerUid)
           .set({
-        'sharedWith': FieldValue.arrayUnion([viewerUid])
+        'sharedWith': viewerUid
       }, SetOptions(merge: true));
 
       // 로컬에 보호자 모드 정보 저장
@@ -492,7 +510,11 @@ class _InviteCodeInputScreenState extends State<InviteCodeInputScreen> {
         SnackBar(content: Text("연결이 완료되었습니다.")),
       );
 
-      Navigator.pop(context);
+      //Navigator.pop(context);
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => CalendarScreen()),
+      );
     } catch (e, stacktrace) {
       print('🔥 Firestore 쓰기 에러: $e');
       print('🔥 Stacktrace: $stacktrace');
@@ -533,7 +555,8 @@ class InviteCodeGenerateScreen extends StatelessWidget {
   // 랜덤 인증 코드 생성
   Future<String> generateAndSaveInviteCode(String ownerUid) async {
     final code = _generateRandomCode(6);
-    final docRef = FirebaseFirestore.instance.collection('inviteCodes').doc(code);
+    final docRef = FirebaseFirestore.instance.collection('inviteCodes').doc(
+        code);
 
     await docRef.set({
       'ownerUid': ownerUid,
@@ -546,7 +569,9 @@ class InviteCodeGenerateScreen extends StatelessWidget {
   String _generateRandomCode(int length) {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     final rand = Random.secure();
-    return List.generate(length, (_) => chars[rand.nextInt(chars.length)]).join();
+    return List
+        .generate(length, (_) => chars[rand.nextInt(chars.length)])
+        .join();
   }
 
   @override
@@ -561,32 +586,34 @@ class InviteCodeGenerateScreen extends StatelessWidget {
 
             showDialog(
               context: context,
-              builder: (_) => AlertDialog(
-                title: Text("초대 코드"),
-                content: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text("이 코드를 보호자에게 전달하세요:"),
-                    SizedBox(height: 12),
-                    SelectableText(
-                      code,
-                      style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+              builder: (_) =>
+                  AlertDialog(
+                    title: Text("초대 코드"),
+                    content: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text("이 코드를 보호자에게 전달하세요:"),
+                        SizedBox(height: 12),
+                        SelectableText(
+                          code,
+                          style: TextStyle(
+                              fontSize: 24, fontWeight: FontWeight.bold),
+                        ),
+                        SizedBox(height: 12),
+                        ElevatedButton.icon(
+                          icon: Icon(Icons.copy),
+                          label: Text("복사하기"),
+                          onPressed: () {
+                            Clipboard.setData(ClipboardData(text: code));
+                            //Navigator.pop(context);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text("복사되었습니다!")),
+                            );
+                          },
+                        ),
+                      ],
                     ),
-                    SizedBox(height: 12),
-                    ElevatedButton.icon(
-                      icon: Icon(Icons.copy),
-                      label: Text("복사하기"),
-                      onPressed: () {
-                        Clipboard.setData(ClipboardData(text: code));
-                        //Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text("복사되었습니다!")),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-              ),
+                  ),
             );
           },
           child: Text("인증 코드 생성하기"),
@@ -617,7 +644,7 @@ class RoleSelectScreen extends StatelessWidget {
               },
               icon: Icon(Icons.edit, size: 28),
               label: Text("👴 나는 일기를 기록하려는 사용자입니다",
-              style: TextStyle(fontSize: 20),),
+                style: TextStyle(fontSize: 20),),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Color(0xFFFFF9C4),
                 foregroundColor: Colors.black,
@@ -636,7 +663,7 @@ class RoleSelectScreen extends StatelessWidget {
               },
               icon: Icon(Icons.visibility, size: 28),
               label: Text("👨 나는 가족의 일기를 열람하려는 사용자입니다",
-              style: TextStyle(fontSize: 20),),
+                style: TextStyle(fontSize: 20),),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Color(0xFFB2EBF2),
                 foregroundColor: Colors.black,
@@ -662,11 +689,11 @@ Future<Map<String, Map<String, String>>> loadEmotionDataFromFirestore() async {
     // 보호자 모드: sharedWith 배열에서 시니어 UID 찾기
     final seniorSnapshot = await FirebaseFirestore.instance
         .collection('users')
-        .where('sharedWith', arrayContains: user.uid)
+        .where('sharedWith', isEqualTo: user.uid)
         .get();
 
     if (seniorSnapshot.docs.isEmpty) {
-      return {};  // 보호자와 연결된 시니어 없음
+      return {}; // 보호자와 연결된 시니어 없음
     }
     targetUid = seniorSnapshot.docs.first.id;
   } else {
@@ -709,7 +736,8 @@ class _SearchDiaryScreenState extends State<SearchDiaryScreen> {
     final diaryData = emotionDataNotifier.value;
     final filteredEntries = diaryData.entries.where((entry) {
       final diaryText = entry.value['diary'] ?? '';
-      return _keyword.isEmpty || diaryText.toLowerCase().contains(_keyword.toLowerCase()); // 대소문자 상관 없이 검색하기
+      return _keyword.isEmpty || diaryText.toLowerCase().contains(
+          _keyword.toLowerCase()); // 대소문자 상관 없이 검색하기
     }).toList();
 
     return Scaffold(
@@ -732,8 +760,9 @@ class _SearchDiaryScreenState extends State<SearchDiaryScreen> {
           ),
           Expanded(
             child: filteredEntries.isEmpty
-                ? Center(child: Text('일치하는 일기가 없습니다.', style: TextStyle(fontSize: 18, color: Colors.grey),
-              ),
+                ? Center(child: Text('일치하는 일기가 없습니다.',
+              style: TextStyle(fontSize: 18, color: Colors.grey),
+            ),
             )
                 : ListView.builder(
               itemCount: filteredEntries.length,
@@ -747,7 +776,7 @@ class _SearchDiaryScreenState extends State<SearchDiaryScreen> {
                     children: _highlightKeyword(diary, _keyword),
                     style: const TextStyle(color: Colors.black), // 기본 스타일
                   ),
-                ),
+                  ),
                 );
               },
             ),
@@ -789,7 +818,8 @@ class _SearchDiaryScreenState extends State<SearchDiaryScreen> {
   }
 }
 
-ValueNotifier<Map<String, Map<String, String>>> emotionDataNotifier = ValueNotifier({});
+ValueNotifier<
+    Map<String, Map<String, String>>> emotionDataNotifier = ValueNotifier({});
 
 class EmotionStatsScreen extends StatelessWidget {
   const EmotionStatsScreen({super.key});
@@ -858,7 +888,10 @@ class EmotionStatsScreen extends StatelessWidget {
                 ? PieChart(
               dataMap: dataMap,
               animationDuration: Duration(milliseconds: 800),
-              chartRadius: MediaQuery.of(context).size.width / 1.5,
+              chartRadius: MediaQuery
+                  .of(context)
+                  .size
+                  .width / 1.5,
               chartType: ChartType.disc,
               legendOptions: LegendOptions(
                 showLegends: true,
@@ -897,27 +930,44 @@ void main() async {
     options: CustomFirebaseOptions.currentPlatform,
   );
   // 이미 로그인된 계정이 없을 때만 익명 로그인 시도
-  final currentUser = FirebaseAuth.instance.currentUser;
+  User? currentUser = FirebaseAuth.instance.currentUser;
   if (currentUser == null) {
     await _signInAnonymously();
+    currentUser = FirebaseAuth.instance.currentUser;
   }
 
-  // 보호자 모드 정보 로딩
-  await loadGuardianModeInfo();
+  // 공유중 인지 Firestore에서 판별
+  final isGuardian = await _checkIfGuardian(currentUser!.uid);
+  if (isGuardian) {
+    await loadGuardianModeInfo(); // 보호자 정보 로딩
+    globals.isLinkedNotifier.value = true;
+  } else {
+    globals.isLinkedNotifier.value = false;
+  }
+
   runApp(const MyApp());
 }
 
+Future<bool> _checkIfGuardian(String currentUid) async {
+  final snapshot = await FirebaseFirestore.instance
+      .collection('users')
+      .where('sharedWith', isEqualTo: currentUid)
+      .limit(1)
+      .get();
+
+  return snapshot.docs.isNotEmpty;
+}
+
 Future<void> _signInAnonymously() async {
-    final userCredential = await FirebaseAuth.instance.signInAnonymously();
-    final user = userCredential.user;
+  final userCredential = await FirebaseAuth.instance.signInAnonymously();
+  final user = userCredential.user;
 }
 
 Future<void> saveEmotionAndNote({
-  required String date,       // 예: '2025-05-02'
-  required String emotion,    // 예: 'happy', 'neutral', 'sad'
-  required String note,       // 예: '산책을 해서 기분이 좋았어요'
+  required String date, // 예: '2025-05-02'
+  required String emotion, // 예: 'happy', 'neutral', 'sad'
+  required String note, // 예: '산책을 해서 기분이 좋았어요'
 }) async {
-
   final user = FirebaseAuth.instance.currentUser;
   if (user == null) {
     return;
@@ -932,6 +982,7 @@ Future<void> saveEmotionAndNote({
       .set({
     'emotion': emotion,
     'note': note,
+    'date': date,
     'timestamp': FieldValue.serverTimestamp(),
   });
 }
@@ -1025,7 +1076,10 @@ class _MyHomePageState extends State<MyHomePage> {
         // TRY THIS: Try changing the color here to a specific color (to
         // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
         // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        backgroundColor: Theme
+            .of(context)
+            .colorScheme
+            .inversePrimary,
         // Here we take the value from the MyHomePage object that was created by
         // the App.build method, and use it to set our appbar title.
         title: Text(widget.title),
@@ -1052,7 +1106,10 @@ class _MyHomePageState extends State<MyHomePage> {
             const Text('You have pushed the button this many times:'),
             Text(
               '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
+              style: Theme
+                  .of(context)
+                  .textTheme
+                  .headlineMedium,
             ),
           ],
         ),
@@ -1073,24 +1130,29 @@ class CalendarScreen extends StatefulWidget {
 
 class _CalendarScreenState extends State<CalendarScreen> {
   String _mostFrequentEmotion = '보통';
-
   String? _viewingEmotion;
   String? _viewingDiary;
   late final VoidCallback _listener;
+  late StreamSubscription<
+      DocumentSnapshot<Map<String, dynamic>>> _sharingListener;
 
   @override
-  void initState(){
+  void initState() {
     super.initState();
     _loadEmotionDataIfUserExists(); // 디버그용
     _loadEmotionData(); // 앱 실행 시 감정 데이터 불러오기
     _debugPrintAppDir(); // 콘솔에 경로 출력
+    //_loadSharingStatus(); // 앱 실행 시 공유 상태 로딩
+
+    _startSharingStatusListener();
 
     _selectedDay = DateTime.now();
 
     _listener = () {
       if (!mounted) return;
       setState(() {
-        _mostFrequentEmotion = getMostFrequentEmotion(emotionDataNotifier.value);
+        _mostFrequentEmotion =
+            getMostFrequentEmotion(emotionDataNotifier.value);
       });
     };
 
@@ -1099,10 +1161,105 @@ class _CalendarScreenState extends State<CalendarScreen> {
     });
   }
 
+  void _startSharingStatusListener() {
+    final currentUid = FirebaseAuth.instance.currentUser!.uid;
+
+    // 공유자의 경우 : 시니어의 문서를 감시
+    if (globals.isGuardianMode) {
+      final seniorUid = globals.linkedUserId;
+      if (seniorUid == null) {
+        print('⚠️ 공유된 시니어 UID 없음');
+        globals.isLinkedNotifier.value = false;
+        return;
+      }
+      _sharingListener = FirebaseFirestore.instance
+          .collection('users')
+          .doc(seniorUid)
+          .snapshots()
+          .listen((snapshot) {
+        final data = snapshot.data();
+        final isLinked = data != null && data['sharedWith'] == currentUid;
+        if (globals.isLinkedNotifier.value != isLinked) {
+          globals.isLinkedNotifier.value = isLinked;
+        }
+      }, onError: (error) {
+        print('❌ 보호자 리스너 에러: $error');
+        globals.isLinkedNotifier.value = false;
+      });
+      // 시니어의 경우 : 본인 문서를 감시
+    } else {
+      _sharingListener = FirebaseFirestore.instance
+          .collection('users')
+          .doc(currentUid)
+          .snapshots()
+          .listen((snapshot) {
+        final data = snapshot.data();
+        final isLinked = data != null && data['sharedWith'] != null;
+        if (globals.isLinkedNotifier.value != isLinked) {
+          globals.isLinkedNotifier.value = isLinked;
+        }
+      }, onError: (error) {
+        print('❌ 시니어 리스너 에러: $error');
+        globals.isLinkedNotifier.value = false;
+      });
+    }
+  }
+
   @override
   void dispose() {
+    _sharingListener.cancel();
+    globals.isLinkedNotifier.dispose();
     emotionDataNotifier.removeListener(_listener);
     super.dispose();
+  }
+
+  /*Future<void> _loadSharingStatus() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+      final isLinked = doc.data()?['sharedWith'] != null;
+      globals.isLinkedNotifier.value = isLinked;
+    } catch (e) {
+      print('공유 상태 로딩 실패: $e');
+    }
+  }*/
+
+  Future<void> _unlinkGuardian() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final lastLinkedUserId = globals.linkedUserId;
+
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .update({'sharedWith': FieldValue.delete(),
+        'lastSharedWith' : lastLinkedUserId,
+      });
+
+
+      // 보호자 모드는 유지하고 공유만 끊음
+      await prefs.setBool('isGuardianMode', true);
+      await prefs.remove('linkedUserId');
+      await prefs.setString('lastLinkedUserId', lastLinkedUserId ?? '');
+
+      globals.isGuardianMode = true;
+      globals.linkedUserId = null;
+      globals.isLinkedNotifier.value = false;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('공유가 해제되었습니다.')),
+      );
+    } catch (e) {
+      print('공유 해제 실패: $e');
+    }
   }
 
   void _loadEmotionDataIfUserExists() async {
@@ -1128,9 +1285,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   String getMostFrequentEmotion(Map<String, Map<String, String>> data) {
     Map<String, int> count = {
-      '기분 좋음' : 0,
-      '보통' : 0,
-      '기분 안 좋음' : 0,
+      '기분 좋음': 0,
+      '보통': 0,
+      '기분 안 좋음': 0,
     };
 
     for (var value in data.values) {
@@ -1141,8 +1298,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }
 
     // 최대 빈도 찾기
-    int maxCount = count.values.fold(0, (prev, curr) => curr > prev ? curr : prev);
-    final maxEmotions = count.entries.where((e) => e.value == maxCount).map((e) => e.key).toList();
+    int maxCount = count.values.fold(
+        0, (prev, curr) => curr > prev ? curr : prev);
+    final maxEmotions = count.entries.where((e) => e.value == maxCount).map((
+        e) => e.key).toList();
 
     // 동점일 경우 '보통'으로
     if (maxEmotions.length != 1) return '모든 감정이 비슷하게 선택되었어요';
@@ -1172,440 +1331,590 @@ class _CalendarScreenState extends State<CalendarScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      resizeToAvoidBottomInset: false, // 키보드가 올라와도 달력 줄어들지 않음
-      appBar: AppBar(
-        title: const SizedBox.shrink(),
-        actions: [
-          Container(
-            margin: EdgeInsets.only(right: 16),
-            child: PopupMenuButton<String>(
-              offset: Offset(0, 40),
-              onSelected: (value) {
-                if (value == '검색') {
-                  Navigator.push(context, MaterialPageRoute(
-                    builder: (context) => SearchDiaryScreen(),
-                  ));
-                } else if (value == '통계') {
-                  Navigator.push(context, MaterialPageRoute(
-                    builder: (context) => EmotionStatsScreen(),
-                  ));
-                } else if (value == '보호자 등록') {
-                  Navigator.push(context, MaterialPageRoute(
-                    builder: (context) => RoleSelectScreen(),
-                  ));
-                } else if (value == '계정 등록') {
-                  Navigator.push(context, MaterialPageRoute(
-                    builder: (context) => AccountRegisterScreen(),
-                  ));
-                } if (value == '로그인') {
-                  Navigator.push(context, MaterialPageRoute(
-                    builder: (_) => const LoginScreen(),
-                  ));
-                } else if (value == '로그아웃') {
-                  showDialog<bool>(
-                    context: context,
-                    builder: (context) => AlertDialog(
-                      title: Text('로그아웃'),
-                      content: Text('정말 로그아웃 하시겠습니까?'),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(context, false),
-                          child: Text('취소'),
-                        ),
-                        TextButton(
-                          onPressed: () => Navigator.pop(context, true),
-                          child: Text('로그아웃'),
-                        ),
-                      ],
-                    ),
-                  ).then((confirm) async {
-                    if (confirm == true) {
-                      await FirebaseAuth.instance.signOut();
-                      Navigator.pushAndRemoveUntil(
-                        context,
-                        MaterialPageRoute(builder: (_) => CalendarScreen()),
-                            (route) => false,
-                      );
-                    }
-                  });
-                }
-              },
-              itemBuilder: (context) {
-                final user = FirebaseAuth.instance.currentUser;
-                return [
-                  PopupMenuItem(
-                    value: '검색',
-                    child: Row(
-                      children: [
-                        Icon(Icons.search, color: Colors.black),
-                        SizedBox(width: 10),
-                        Text('검색'),
-                      ],
-                    ),
-                  ),
-                  PopupMenuItem(
-                    value: '통계',
-                    child: Row(
-                      children: [
-                        Icon(Icons.bar_chart, color: Colors.black),
-                        SizedBox(width: 10),
-                        Text('통계'),
-                      ],
-                    ),
-                  ),
-                  PopupMenuItem(
-                    value: '보호자 등록',
-                    child: Row(
-                      children: [
-                        Icon(Icons.family_restroom, color: Colors.black),
-                        SizedBox(width: 10),
-                        Text('보호자 등록'),
-                      ],
-                    ),
-                  ),
-                  PopupMenuItem(
-                    value: '계정 등록',
-                    child: Row(
-                      children: [
-                        Icon(Icons.person_add, color: Colors.black),
-                        SizedBox(width: 10),
-                        Text('계정 등록'),
-                      ],
-                    ),
-                  ),
-                  if (user == null)
-                    PopupMenuItem(
-                      value: '로그인',
-                      child: Row(
-                        children: [
-                          Icon(Icons.login, color: Colors.black),
-                          SizedBox(width: 10),
-                          Text('로그인'),
-                          ],
-                        ),
-                      ),
-                  if (user != null && !user.isAnonymous) ...[
-                    const PopupMenuDivider(),
-                    PopupMenuItem(
-                      value: '로그아웃',
-                      child: Row(
-                        children: [
-                          Icon(Icons.logout, color: Colors.black),
-                          SizedBox(width: 10),
-                          Text('로그아웃'),
-                        ],
-                      ),
-                    ),
-                  ],
-                ];
-              },
-              child: Container(
-                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade200,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.menu, color: Colors.black),
-                    SizedBox(width: 8),
-                    Text(
-                      '메뉴',
-                      style: TextStyle(
-                        fontSize: 18,
-                        color: Colors.black,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          // 감정 최빈값 상단 표시
-          /*Padding(
-            padding: const EdgeInsets.only(top: 16),
-            child: Column(
-              children: [
-              Text(
-              '가장 자주 느낀 감정',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
-            ),
-            const SizedBox(height: 8),
-              Text(
-                getEmotionEmoji(_mostFrequentEmotion),
-                style: const TextStyle(fontSize: 36),
-              ),
-              ],
-            ),
-          ),*/
-
-      // 캘린더
-      ValueListenableBuilder(
-            valueListenable: emotionDataNotifier,
-            builder: (context, emotionMap, _){
-              return TableCalendar(
-                locale: 'ko_KR',
-                firstDay: DateTime.utc(2020, 1, 1),
-                lastDay: DateTime.utc(2030, 12, 31),
-                focusedDay: _focusedDay,
-
-                calendarFormat: CalendarFormat.month,
-                availableCalendarFormats: const {
-                  CalendarFormat.month: 'Month',
-                },
-
-                selectedDayPredicate: (day) {
-                  if (_selectedDay == null) return false;
-                  return isSameDay(_selectedDay, day);
-                },
-                enabledDayPredicate: (day) => isSameOrBeforeToday(day),
-
-                rowHeight: 60,
-                daysOfWeekHeight: 32,
-                daysOfWeekStyle: DaysOfWeekStyle(
-                  weekdayStyle: TextStyle(fontSize: 14),
-                  weekendStyle: TextStyle(fontSize: 14),
-                ),
-
-                calendarStyle: CalendarStyle(
-                  disabledTextStyle: TextStyle(color: Colors.grey), // 미래는 회색
-                ),
-                onDaySelected: (selectedDay, focusedDay) async {
-                  if (!isSameOrBeforeToday(selectedDay)) {
-                    return;
-                  }
-
-                  setState(() {
-                    _selectedDay = selectedDay;
-                    _focusedDay = focusedDay;
-
-                    if (globals.isGuardianMode) {
-                      final dateStr = formatDate(selectedDay);
-                      final data = emotionDataNotifier.value[dateStr];
-                      _viewingEmotion = data?['emotion'];
-                      _viewingDiary = data?['diary'];
-                    }
-                  });
-
-                  if (!globals.isGuardianMode) {
-                    // 감정 입력 화면 다녀오기
-                    await Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) =>
-                            EmotionInputScreen(selectedDay: selectedDay),
-                      ),
-                    );
-
-                    // 데이터 다시 불러오기
-                    await _loadEmotionData();
-
-                    Future.delayed(Duration(milliseconds: 50), () {
-                      setState(() {
-                        _focusedDay = selectedDay; // 다시 원래 날짜로 복귀해서 리렌더 유도
-                      });
-                    });
-                  }
-                },
-
-                // 감정 이모티콘 셀
-                calendarBuilders: CalendarBuilders(
-                  defaultBuilder: (context, day, focusedDay) {
-                    final dateStr = formatDate(day);
-                    final emotion = emotionDataNotifier.value[dateStr]?['emotion'];
-                    String emoji = '';
-
-                    if (emotion != null) {
-                      if (emotion == '기분 좋음')
-                        emoji = '😊';
-                      else if (emotion == '보통')
-                        emoji = '😐';
-                      else
-                        emoji = '😞';
-                    }
-
-                    // shrinkFactor 계산
-                    const baseRowHeight = 60.0;
-                    final shrinkFactor = 55.0 / baseRowHeight;
-
-                      return Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            padding: EdgeInsets.all(8 * shrinkFactor),
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                            ),
-                          child: Text('${day.day}',
-                              style: TextStyle(fontWeight: isSameDay(day, DateTime.now())
-                                  ? FontWeight.bold : FontWeight.normal,
-                              fontSize: 14.0 * shrinkFactor,),),),
-                          Padding(
-                            padding: const EdgeInsets.only(top: 1.0),
-                            child: Text(
-                              emoji.isNotEmpty ? emoji : ' ',
-                              style: TextStyle(fontSize: 18.0 * shrinkFactor),
-                            ),
-                          ),
-                        ],
-                      );
-                    },
-
-                  todayBuilder: (context, day, focusedDay) {
-                    final dateStr = formatDate(day);
-                    final emotion = emotionDataNotifier.value[dateStr]?['emotion'];
-                    String emoji = '';
-
-                    if (emotion != null) {
-                      if (emotion == '기분 좋음')
-                        emoji = '😊';
-                      else if (emotion == '보통')
-                        emoji = '😐';
-                      else
-                        emoji = '😞';
-                    }
-
-                    const baseRowHeight = 60.0;
-                    final shrinkFactor = 55.0 / baseRowHeight;
-
-                    return Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          padding: EdgeInsets.all(8.0 * shrinkFactor),
-                          decoration: BoxDecoration(shape: BoxShape.circle),
-                          child: Text('${day.day}',
-                              style: TextStyle(fontWeight: FontWeight.bold,
-                              fontSize: 14.0 * shrinkFactor,)),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.only(top: 1.0),
-                          child: Text(emoji.isNotEmpty ? emoji : ' ',
-                              style: TextStyle(fontSize: 18.0 * shrinkFactor),
-                          ),
-                        ),
-                      ],
-                    );
-                  },
-
-                  selectedBuilder: (context, day, focusedDay) {
-                    final dateStr = formatDate(day);
-                    final emotion = emotionDataNotifier.value[dateStr]?['emotion'];
-                    String emoji = '';
-
-                    if (emotion != null) {
-                      if (emotion == '기분 좋음') emoji = '😊';
-                      else if (emotion == '보통') emoji = '😐';
-                      else emoji = '😞';
-                    }
-
-                    const baseRowHeight = 60.0;
-                    final shrinkFactor = 55.0 / baseRowHeight;
-
-                    bool isToday = isSameDay(day, DateTime.now());
-
-                    return Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          padding : EdgeInsets.all(8.0 * shrinkFactor),
-                          decoration: BoxDecoration(
-                            color: Colors.blue,
-                            shape: BoxShape.circle,
-                          ),
-                          child: Text('${day.day}',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
-                              fontSize: 14.0 * shrinkFactor,
-                            ),
-                          ),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.only(top: 1.0),
-                          child: Text(emoji.isNotEmpty ? emoji : ' ',
-                            style: TextStyle(fontSize: 18.0 * shrinkFactor),
-                          ),
-                        ),
-                      ],
-                    );
-                  },
-                ),
-              );
-            },
-          ),
-
-          if (globals.isGuardianMode && _viewingEmotion != null)
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 24.0),
-                child: SingleChildScrollView(
-                  child: Container(
-                    padding: EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Color(0xFFF4F0FA),
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black12,
-                          blurRadius: 6,
-                          offset: Offset(0, 3),
-                        ),
-                      ],
-                    ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start, // 왼쪽 정렬
+        resizeToAvoidBottomInset: false, // 키보드가 올라와도 달력 줄어들지 않음
+        appBar: AppBar(
+          title: const SizedBox.shrink(),
+          actions: [
+            ValueListenableBuilder<bool>(
+              valueListenable: globals.isLinkedNotifier,
+              builder: (context, isLinked, _) {
+                return Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: Row(
                     children: [
-                      // 날짜 + 감정 Row
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Row(
-                            children: [
-                              Icon(Icons.calendar_today, size: 20),
-                              const SizedBox(width: 8),
-                              Text(
-                                formatDate(_selectedDay!),
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
-                          ),
-                          Text(
-                            //_viewingEmotion ?? '',
-                            getEmotionEmoji(_viewingEmotion ?? ''),
-                            style: TextStyle(fontSize: 20),
-                          ),
-                        ],
+                      Icon(
+                        isLinked ? Icons.link : Icons.link_off,
+                        color: isLinked ? Colors.green : Colors.grey,
+                        size: 20,
                       ),
-                      const SizedBox(height: 20),
-
-                      // 일기 본문
+                      SizedBox(width: 4),
                       Text(
-                        _viewingDiary ?? '작성된 일기가 없습니다.',
+                        isLinked ? '공유 중' : '공유 안 됨',
                         style: TextStyle(
-                          fontSize: 16,
-                          height: 1.8,
+                          fontSize: 14,
+                          color: Colors.black87,
                         ),
-                        textAlign: TextAlign.start,
                       ),
                     ],
                   ),
-                ),
+                );
+              },
+            ),
+            Container(
+              margin: EdgeInsets.only(right: 16),
+              child: ValueListenableBuilder<bool>(
+                valueListenable: globals.isLinkedNotifier,
+                builder: (context, isLinked, _) {
+                  return PopupMenuButton<String>(
+                    offset: Offset(0, 40),
+                    onSelected: (value) async {
+                      if (value == '검색') {
+                        Navigator.push(context, MaterialPageRoute(
+                          builder: (context) => SearchDiaryScreen(),
+                        ));
+                      } else if (value == '통계') {
+                        Navigator.push(context, MaterialPageRoute(
+                          builder: (context) => EmotionStatsScreen(),
+                        ));
+                      } else if (value == '계정 등록') {
+                        Navigator.push(context, MaterialPageRoute(
+                          builder: (context) => AccountRegisterScreen(),
+                        ));
+                      } else if (value == '로그인') {
+                        Navigator.push(context, MaterialPageRoute(
+                          builder: (_) => const LoginScreen(),
+                        ));
+                      } else if (value == '로그아웃') {
+                        showDialog<bool>(
+                          context: context,
+                          builder: (context) =>
+                              AlertDialog(
+                                title: Text('로그아웃'),
+                                content: Text('정말 로그아웃 하시겠습니까?'),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.pop(context, false),
+                                    child: Text('취소'),
+                                  ),
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.pop(context, true),
+                                    child: Text('로그아웃'),
+                                  ),
+                                ],
+                              ),
+                        ).then((confirm) async {
+                          if (confirm == true) {
+                            // 인증 로그아웃
+                            await FirebaseAuth.instance.signOut();
+
+                            // 로컬 정보 초기화
+                            final prefs = await SharedPreferences.getInstance();
+                            if (globals.isGuardianMode) {
+                              // 공유 중인 경우에만 초기화
+                              await prefs.setBool('isGuardianMode', false);
+                              await prefs.remove('linkedUserId');
+
+                              globals.isGuardianMode = false;
+                              globals.linkedUserId = null;
+                              globals.isLinkedNotifier.value = false;
+                            }
+
+                            Navigator.pushAndRemoveUntil(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (_) => CalendarScreen()),
+                                  (route) => false,
+                            );
+                          }
+                        });
+                      } else if (value == '공유 등록') {
+                        Navigator.push(context, MaterialPageRoute(
+                          builder: (context) => RoleSelectScreen(),
+                        ));
+                      } else if (value == '공유 끊기') {
+                        final confirm = await showDialog<bool>(
+                          context: context,
+                          builder: (context) =>
+                              AlertDialog(
+                                title: Text('공유 끊기'),
+                                content: Text('정말 공유를 끊으시겠어요?'),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.pop(context, false),
+                                    child: Text('취소'),
+                                  ),
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.pop(context, true),
+                                    child: Text('끊기'),
+                                  ),
+                                ],
+                              ),
+                        );
+                        if (confirm == true) {
+                          await _unlinkGuardian();
+                          globals.isLinkedNotifier.value = false;
+                        }
+                      }
+                    },
+                    itemBuilder: (context) {
+                      final user = FirebaseAuth.instance.currentUser;
+                      final List<PopupMenuEntry<String>> items = [];
+
+                      if (user == null) {
+                        return items;
+                      }
+
+                      bool addedSharingMenu = false;
+
+                      if (globals.isLinkedNotifier.value) {
+                        if (!globals.isGuardianMode) {
+                          items.add(
+                            PopupMenuItem(
+                              value: '공유 끊기',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.link_off, color: Colors.black),
+                                  SizedBox(width: 10),
+                                  Text('공유 끊기'),
+                                ],
+                              ),
+                            ),
+                          );
+                          addedSharingMenu = true;
+                        }
+                      } else {
+                        items.add(
+                          PopupMenuItem(
+                            value: '공유 등록',
+                            child: Row(
+                              children: [
+                                Icon(Icons.link, color: Colors.black),
+                                SizedBox(width: 10),
+                                Text('공유 등록'),
+                              ],
+                            ),
+                          ),
+                        );
+                        addedSharingMenu = true;
+                      }
+                      if (addedSharingMenu) {
+                        items.add(const PopupMenuDivider());
+                      }
+
+                      items.addAll([
+                        PopupMenuItem(
+                          value: '검색',
+                          child: Row(
+                            children: [
+                              Icon(Icons.search, color: Colors.black),
+                              SizedBox(width: 10),
+                              Text('검색'),
+                            ],
+                          ),
+                        ),
+                        PopupMenuItem(
+                          value: '통계',
+                          child: Row(
+                            children: [
+                              Icon(Icons.bar_chart, color: Colors.black),
+                              SizedBox(width: 10),
+                              Text('통계'),
+                            ],
+                          ),
+                        ),
+                        if (user == null || user.isAnonymous) ...[
+                          PopupMenuItem(
+                            value: '계정 등록',
+                            child: Row(
+                              children: [
+                                Icon(Icons.person_add, color: Colors.black),
+                                SizedBox(width: 10),
+                                Text('계정 등록'),
+                              ],
+                            ),
+                          ),
+                          PopupMenuItem(
+                            value: '로그인',
+                            child: Row(
+                              children: [
+                                Icon(Icons.login, color: Colors.black),
+                                SizedBox(width: 10),
+                                Text('로그인'),
+                              ],
+                            ),
+                          ),
+                        ],
+                        if (user != null && !user.isAnonymous) ...[
+                          const PopupMenuDivider(),
+                          PopupMenuItem(
+                            value: '로그아웃',
+                            child: Row(
+                              children: [
+                                Icon(Icons.logout, color: Colors.black),
+                                SizedBox(width: 10),
+                                Text('로그아웃'),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ]);
+                      return items;
+                    },
+                    child: Container(
+                      padding: EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade200,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.menu, color: Colors.black),
+                          SizedBox(width: 8),
+                          Text(
+                            '메뉴',
+                            style: TextStyle(
+                              fontSize: 18,
+                              color: Colors.black,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
               ),
             ),
+          ],
+        ),
+      body: Stack(
+        children: [
+          if (globals.isGuardianMode)
+            StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(globals.linkedUserId)
+                  .collection('diaries')
+                  .orderBy('timestamp', descending: true)
+                  .snapshots(),
+              builder: (context, snapshot) {
+                print('[StreamBuilder] snapshot updated');
+                if (snapshot.hasData) {
+                  final newData = <String, Map<String, String>>{};
+                  for (final doc in snapshot.data!.docs) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    newData[doc.id] = {
+                      'emotion': data['emotion'] ?? '',
+                      'diary': data['note'] ?? '',
+                    };
+                  }
+
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    emotionDataNotifier.value = newData;
+                  });
+                }
+                return const SizedBox.shrink();
+              },
             ),
+
+          Column(
+            children: [
+              // 캘린더
+              ValueListenableBuilder(
+                valueListenable: emotionDataNotifier,
+                builder: (context, emotionMap, _) {
+                  print('[TableCalendar 빌드] focusedDay: $_focusedDay');
+                  return TableCalendar(
+                    locale: 'ko_KR',
+                    firstDay: DateTime.utc(2020, 1, 1),
+                    lastDay: DateTime.utc(2030, 12, 31),
+                    focusedDay: _focusedDay,
+
+                    calendarFormat: CalendarFormat.month,
+                    availableCalendarFormats: const {
+                      CalendarFormat.month: 'Month',
+                    },
+
+                    selectedDayPredicate: (day) {
+                      if (_selectedDay == null) return false;
+                      return isSameDay(_selectedDay, day);
+                    },
+                    enabledDayPredicate: (day) => isSameOrBeforeToday(day),
+
+                    rowHeight: 60,
+                    daysOfWeekHeight: 32,
+                    daysOfWeekStyle: DaysOfWeekStyle(
+                      weekdayStyle: TextStyle(fontSize: 14),
+                      weekendStyle: TextStyle(fontSize: 14),
+                    ),
+
+                    calendarStyle: CalendarStyle(
+                      disabledTextStyle: TextStyle(
+                          color: Colors.grey), // 미래는 회색
+                    ),
+                    onDaySelected: (selectedDay, focusedDay) async {
+                      print('[onDaySelected] focusedDay: $focusedDay');
+                      if (!isSameOrBeforeToday(selectedDay)) {
+                        return;
+                      }
+
+                      setState(() {
+                        _selectedDay = selectedDay;
+                        _focusedDay = focusedDay;
+                        print('[setState-onDaySelected] _selectedDay: $_selectedDay');
+                        print('[setState-onDaySelected] _focusedDay: $_focusedDay');
+
+                        if (globals.isGuardianMode) {
+                          final dateStr = formatDate(selectedDay);
+                          final data = emotionDataNotifier.value[dateStr];
+                          _viewingEmotion = data?['emotion'];
+                          _viewingDiary = data?['diary'];
+                        }
+                      });
+
+                      if (!globals.isGuardianMode) {
+                        // 감정 입력 화면 다녀오기
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) =>
+                                EmotionInputScreen(selectedDay: selectedDay),
+                          ),
+                        );
+
+                        // 데이터 다시 불러오기
+                        await _loadEmotionData();
+
+                        Future.delayed(Duration(milliseconds: 50), () {
+                          setState(() {
+                            _focusedDay = selectedDay; // 다시 원래 날짜로 복귀해서 리렌더 유도
+                            print('[setState] 사용자가 날짜 선택해서 _focusedDay 바꿈: $_focusedDay');
+                          });
+                        });
+                      }
+                    },
+
+                    // 감정 이모티콘 셀
+                    calendarBuilders: CalendarBuilders(
+                      defaultBuilder: (context, day, focusedDay) {
+                        if (globals.isGuardianMode && !globals.isLinkedNotifier.value) {
+                          if (!isBeforeToday(day)) {
+                            return null;
+                          }
+                        }
+                        final dateStr = formatDate(day);
+                        final emotion = emotionDataNotifier
+                            .value[dateStr]?['emotion'];
+                        String emoji = '';
+
+                        if (emotion != null) {
+                          if (emotion == '기분 좋음')
+                            emoji = '😊';
+                          else if (emotion == '보통')
+                            emoji = '😐';
+                          else
+                            emoji = '😞';
+                        }
+
+                        // shrinkFactor 계산
+                        const baseRowHeight = 60.0;
+                        final shrinkFactor = 55.0 / baseRowHeight;
+
+                        return Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              padding: EdgeInsets.all(8 * shrinkFactor),
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                              ),
+                              child: Text('${day.day}',
+                                style: TextStyle(
+                                  fontWeight: isSameDay(day, DateTime.now())
+                                      ? FontWeight.bold : FontWeight.normal,
+                                  fontSize: 14.0 * shrinkFactor,),),),
+                            Padding(
+                              padding: const EdgeInsets.only(top: 1.0),
+                              child: Text(
+                                emoji.isNotEmpty ? emoji : ' ',
+                                style: TextStyle(fontSize: 18.0 * shrinkFactor),
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+
+                      todayBuilder: (context, day, focusedDay) {
+                        final dateStr = formatDate(day);
+                        final emotion = emotionDataNotifier
+                            .value[dateStr]?['emotion'];
+                        String emoji = '';
+
+                        if (emotion != null) {
+                          if (emotion == '기분 좋음')
+                            emoji = '😊';
+                          else if (emotion == '보통')
+                            emoji = '😐';
+                          else
+                            emoji = '😞';
+                        }
+
+                        const baseRowHeight = 60.0;
+                        final shrinkFactor = 55.0 / baseRowHeight;
+
+                        return Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              padding: EdgeInsets.all(8.0 * shrinkFactor),
+                              decoration: BoxDecoration(shape: BoxShape.circle),
+                              child: Text('${day.day}',
+                                  style: TextStyle(fontWeight: FontWeight.bold,
+                                    fontSize: 14.0 * shrinkFactor,)),
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.only(top: 1.0),
+                              child: Text(emoji.isNotEmpty ? emoji : ' ',
+                                style: TextStyle(fontSize: 18.0 * shrinkFactor),
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+
+                      selectedBuilder: (context, day, focusedDay) {
+                        final dateStr = formatDate(day);
+                        final emotion = emotionDataNotifier
+                            .value[dateStr]?['emotion'];
+                        String emoji = '';
+
+                        if (emotion != null) {
+                          if (emotion == '기분 좋음')
+                            emoji = '😊';
+                          else if (emotion == '보통')
+                            emoji = '😐';
+                          else
+                            emoji = '😞';
+                        }
+
+                        const baseRowHeight = 60.0;
+                        final shrinkFactor = 55.0 / baseRowHeight;
+
+                        bool isToday = isSameDay(day, DateTime.now());
+
+                        return Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              padding: EdgeInsets.all(8.0 * shrinkFactor),
+                              decoration: BoxDecoration(
+                                color: Colors.blue,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Text('${day.day}',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: isToday
+                                      ? FontWeight.bold
+                                      : FontWeight.normal,
+                                  fontSize: 14.0 * shrinkFactor,
+                                ),
+                              ),
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.only(top: 1.0),
+                              child: Text(emoji.isNotEmpty ? emoji : ' ',
+                                style: TextStyle(fontSize: 18.0 * shrinkFactor),
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                  );
+                },
+              ),
+              if (globals.isGuardianMode &&
+                  globals.isLinkedNotifier.value == false &&
+                  !isBeforeToday(_selectedDay!))
+                SizedBox.shrink()
+              else
+                if (globals.isGuardianMode && _viewingEmotion != null)
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16.0, vertical: 24.0),
+                      child: SingleChildScrollView(
+                        child: Container(
+                          padding: EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            color: Color(0xFFF4F0FA),
+                            borderRadius: BorderRadius.circular(12),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black12,
+                                blurRadius: 6,
+                                offset: Offset(0, 3),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            // 왼쪽 정렬
+                            children: [
+                              // 날짜 + 감정 Row
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment
+                                    .spaceBetween,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Icon(Icons.calendar_today, size: 20),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        formatDate(_selectedDay!),
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  Text(
+                                    //_viewingEmotion ?? '',
+                                    getEmotionEmoji(_viewingEmotion ?? ''),
+                                    style: TextStyle(fontSize: 20),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 20),
+
+                              // 일기 본문
+                              Text(
+                                _viewingDiary ?? '작성된 일기가 없습니다.',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  height: 1.8,
+                                ),
+                                textAlign: TextAlign.start,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+            ],
+          ),
         ],
       ),
     );
@@ -1694,30 +2003,38 @@ class _EmotionInputScreenState extends State<EmotionInputScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('${widget.selectedDay.month}월 ${widget.selectedDay.day}일 감정 입력'),
+        title: Text(
+            '${widget.selectedDay.month}월 ${widget.selectedDay.day}일 감정 입력'),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('오늘 기분은 어땠나요?', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+            Text('오늘 기분은 어땠나요?',
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
             const SizedBox(height: 24),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
                 EmotionButton(
-                  emoji: '😊', label: '기분 좋음', color: Colors.lightBlue.shade200,
+                  emoji: '😊',
+                  label: '기분 좋음',
+                  color: Colors.lightBlue.shade200,
                   onTap: () => setState(() => _selectedEmotion = '기분 좋음'),
                   selected: _selectedEmotion == '기분 좋음',
                 ),
                 EmotionButton(
-                  emoji: '😐', label: '보통', color: const Color(0xFFE6D3B3),
+                  emoji: '😐',
+                  label: '보통',
+                  color: const Color(0xFFE6D3B3),
                   onTap: () => setState(() => _selectedEmotion = '보통'),
                   selected: _selectedEmotion == '보통',
                 ),
                 EmotionButton(
-                  emoji: '😞', label: '기분 안 좋음', color: Colors.grey.shade400,
+                  emoji: '😞',
+                  label: '기분 안 좋음',
+                  color: Colors.grey.shade400,
                   onTap: () => setState(() => _selectedEmotion = '기분 안 좋음'),
                   selected: _selectedEmotion == '기분 안 좋음',
                 ),
