@@ -8,4 +8,3 @@ import 'package:flutter/material.dart';
 bool isGuardianMode = false; // 보호자 모드 여부
 String? linkedUserId; // 시니어 UID
 final ValueNotifier<bool> isLinkedNotifier = ValueNotifier(false); // 공유 상태
-String? lastLinkedUserId; // 과거 공유 대상

@@ -439,7 +439,6 @@ Future<void> loadGuardianModeInfo() async {
   final prefs = await SharedPreferences.getInstance();
   globals.isGuardianMode = prefs.getBool('isGuardianMode') ?? false;
   globals.linkedUserId = prefs.getString('linkedUserId');
-  globals.lastLinkedUserId = prefs.getString('lastLinkedUserId');
 }
 
 Future<void> saveGuardianModeInfo(String seniorUID) async {
@@ -474,25 +473,43 @@ class _InviteCodeInputScreenState extends State<InviteCodeInputScreen> {
       return;
     }
 
-    final ownerUid = doc.data()?['ownerUid'];
-    final viewerUid = FirebaseAuth.instance.currentUser!.uid;
+    final data = doc.data()!;
+    final ownerUid = data['ownerUid'] as String?;
+    final used = (data['used'] as bool?) ?? false;
+    final expiresAt = data['expiresAt'] as Timestamp?;
 
+    if (ownerUid == null) {
+      setState(() => _error = "잘못된 코드입니다.");
+      return;
+    }
+
+    // 유효기간 체크
+    if (expiresAt != null && expiresAt.toDate().isBefore(DateTime.now())) {
+      setState(() => _error = "만료된 코드입니다.");
+      return;
+    }
+
+    if (used) {
+      setState(() => _error = "이미 사용된 코드입니다.");
+      return;
+    }
+
+    final viewerUid = FirebaseAuth.instance.currentUser!.uid;
     if (ownerUid == viewerUid) {
       setState(() => _error = "본인의 코드입니다.");
       return;
     }
 
-    print('viewerUid: $viewerUid');
-
+    // 이미 연결된 보호자 있는지 검사 (1:1 강제)
     final userDoc = await FirebaseFirestore.instance
         .collection('users')
         .doc(ownerUid)
         .get();
-    final alreadyLinked = userDoc.data()?['sharedWith'] != null;
-    if (alreadyLinked) {
-      setState(() => _error = "이미 연결된 사람이 있습니다.");
-      return;
-    }
+      final alreadyLinked = userDoc.data()?['sharedWith'] != null;
+      if (alreadyLinked) {
+        setState(() => _error = "이미 연결된 사람이 있습니다.");
+        return;
+      }
 
     try {
       // 보호자로 등록
@@ -503,6 +520,12 @@ class _InviteCodeInputScreenState extends State<InviteCodeInputScreen> {
         'sharedWith': viewerUid
       }, SetOptions(merge: true));
 
+      // 초대코드 사용 처리 (사용 표시 + 즉시 무효화)
+      await FirebaseFirestore.instance
+          .collection('inviteCodes')
+          .doc(input)
+          .update({'used': true});
+
       // 로컬에 보호자 모드 정보 저장
       await saveGuardianModeInfo(ownerUid);
 
@@ -510,7 +533,6 @@ class _InviteCodeInputScreenState extends State<InviteCodeInputScreen> {
         SnackBar(content: Text("연결이 완료되었습니다.")),
       );
 
-      //Navigator.pop(context);
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => CalendarScreen()),
@@ -555,12 +577,19 @@ class InviteCodeGenerateScreen extends StatelessWidget {
   // 랜덤 인증 코드 생성
   Future<String> generateAndSaveInviteCode(String ownerUid) async {
     final code = _generateRandomCode(6);
-    final docRef = FirebaseFirestore.instance.collection('inviteCodes').doc(
-        code);
+    final now = Timestamp.now();
+    final expiresAt = Timestamp.fromDate(
+      DateTime.now().add(const Duration(hours: 24)),
+    );
 
-    await docRef.set({
+    await FirebaseFirestore.instance
+        .collection('inviteCodes')
+        .doc(code)
+        .set({
       'ownerUid': ownerUid,
-      'createdAt': FieldValue.serverTimestamp(),
+      'createdAt': now,
+      'expiresAt': expiresAt,   // 24시간 유효
+      'used': false,            // 1회용 플래그
     });
 
     return code;
@@ -935,17 +964,55 @@ void main() async {
     await _signInAnonymously();
     currentUser = FirebaseAuth.instance.currentUser;
   }
-
-  // 공유중 인지 Firestore에서 판별
-  final isGuardian = await _checkIfGuardian(currentUser!.uid);
+  
+  // Firestore 문서 자동 생성
+  await ensureUserDocumentExists();
+  
+  // 역할/연결 판별
+  final myUid = currentUser!.uid;
+  final seniorUid = await _getMySeniorUidIfGuardian(myUid);
+  final isGuardian = seniorUid != null;
+  
+  globals.isGuardianMode = isGuardian;
+  globals.linkedUserId = seniorUid;
+  globals.isLinkedNotifier.value = isGuardian && seniorUid.isNotEmpty;
+  
+  // 보호자 모드/연결 상태를 로컬에도 동기화
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setBool('isGuardianMode', isGuardian);
   if (isGuardian) {
-    await loadGuardianModeInfo(); // 보호자 정보 로딩
-    globals.isLinkedNotifier.value = true;
+    await prefs.setString('linkedUserId', seniorUid!);
   } else {
-    globals.isLinkedNotifier.value = false;
+    await prefs.remove('linkedUserId');
   }
 
   runApp(const MyApp());
+}
+
+// 보호자라면 나를 sharedWith로 갖는 senior 문서를 찾아 seniorUid 반환
+Future<String?> _getMySeniorUidIfGuardian(String myUid) async {
+  final q = await FirebaseFirestore.instance
+      .collection('users')
+      .where('sharedWith', isEqualTo: myUid)
+      .limit(1)
+      .get();
+  if (q.docs.isEmpty) return null;
+  return q.docs.first.id;
+}
+
+Future<void> ensureUserDocumentExists() async {
+  final uid = FirebaseAuth.instance.currentUser!.uid;
+  final docRef = FirebaseFirestore.instance.collection('users').doc(uid);
+  final snapshot = await docRef.get();
+
+  if (!snapshot.exists) {
+    await docRef.set({
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+    print('✅ Firestore에 사용자 문서 생성됨: $uid');
+  } else {
+    print('🔎 사용자 문서 이미 존재함: $uid');
+  }
 }
 
 Future<bool> _checkIfGuardian(String currentUid) async {
@@ -970,6 +1037,11 @@ Future<void> saveEmotionAndNote({
 }) async {
   final user = FirebaseAuth.instance.currentUser;
   if (user == null) {
+    return;
+  }
+
+  if (globals.isGuardianMode) {
+    debugPrint('❌ guardian cannot write diaries');
     return;
   }
 
@@ -1133,8 +1205,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   String? _viewingEmotion;
   String? _viewingDiary;
   late final VoidCallback _listener;
-  late StreamSubscription<
-      DocumentSnapshot<Map<String, dynamic>>> _sharingListener;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _sharingListener;
 
   @override
   void initState() {
@@ -1147,7 +1218,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
     _startSharingStatusListener();
 
     _selectedDay = DateTime.now();
-
     _listener = () {
       if (!mounted) return;
       setState(() {
@@ -1161,30 +1231,53 @@ class _CalendarScreenState extends State<CalendarScreen> {
     });
   }
 
-  void _startSharingStatusListener() {
+  Future<void> _startSharingStatusListener() async {
     final currentUid = FirebaseAuth.instance.currentUser!.uid;
 
-    // 공유자의 경우 : 시니어의 문서를 감시
+    // 기존 스트림 정리
+    if (_sharingListener != null) {
+      try {
+        await _sharingListener!.cancel();
+      } catch (_) {}
+      _sharingListener = null;
+    }
+
     if (globals.isGuardianMode) {
+      // 보호자: 시니어 문서 감시
       final seniorUid = globals.linkedUserId;
       if (seniorUid == null) {
-        print('⚠️ 공유된 시니어 UID 없음');
         globals.isLinkedNotifier.value = false;
+        if (mounted) {
+          setState(() {
+            emotionDataNotifier.value = {};
+            _viewingEmotion = null;
+            _viewingDiary = null;
+          });
+        }
         return;
       }
+
       _sharingListener = FirebaseFirestore.instance
           .collection('users')
           .doc(seniorUid)
           .snapshots()
-          .listen((snapshot) {
+          .listen((snapshot) async { // users/{seniorUid} 문서에 변화가 생길 때마다 snapshot이 계속 전달
         final data = snapshot.data();
-        final isLinked = data != null && data['sharedWith'] == currentUid;
-        if (globals.isLinkedNotifier.value != isLinked) {
-          globals.isLinkedNotifier.value = isLinked;
+        debugPrint('👀 guardian snapshot: data=$data, sharedWith=${data?['sharedWith']}');
+        final sharedWith = data?['sharedWith'];
+        final bool isLinkedNow  = sharedWith == currentUid;
+
+        if (globals.isLinkedNotifier.value != isLinkedNow) {
+          globals.isLinkedNotifier.value = isLinkedNow; // 앱 전역 상태 플래그 (보호자 연결이 안 되어 있음을 방송)
         }
-      }, onError: (error) {
-        print('❌ 보호자 리스너 에러: $error');
-        globals.isLinkedNotifier.value = false;
+
+        if (!isLinkedNow) {
+          await _unlinkAndStayGuardian();
+          return;
+        }
+      }, onError: (error) async {
+        debugPrint('❗ guardian stream error: $error');
+        await _unlinkAndStayGuardian();
       });
       // 시니어의 경우 : 본인 문서를 감시
     } else {
@@ -1194,7 +1287,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
           .snapshots()
           .listen((snapshot) {
         final data = snapshot.data();
-        final isLinked = data != null && data['sharedWith'] != null;
+        final sharedWith = data?['sharedWith'];
+        final bool isLinked = sharedWith is List
+            ? (sharedWith as List).isNotEmpty
+            : sharedWith != null;
+
         if (globals.isLinkedNotifier.value != isLinked) {
           globals.isLinkedNotifier.value = isLinked;
         }
@@ -1207,8 +1304,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   @override
   void dispose() {
-    _sharingListener.cancel();
-    globals.isLinkedNotifier.dispose();
+    _sharingListener?.cancel();
     emotionDataNotifier.removeListener(_listener);
     super.dispose();
   }
@@ -1229,30 +1325,94 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }
   }*/
 
+  Future<void> _unlinkAndStayGuardian() async {
+    debugPrint('🔁 unlink: stay as guardian (no self data)');
+
+    // 1) 보호자 모드 유지 + 링크 해제
+    globals.isGuardianMode = true;
+    globals.linkedUserId = null;
+    globals.isLinkedNotifier.value = false;
+
+    // 2) 리스너 정리
+    try { await _sharingListener!.cancel(); } catch (_) {}
+
+    // 3) UI에서 시니어 흔적 제거 (빈 상태로)
+    if (mounted) {
+      setState(() {
+        emotionDataNotifier.value = {};
+        _viewingEmotion = null;
+        _viewingDiary  = null;
+      });
+    }
+
+    // 4) 로컬 저장
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('isGuardianMode', true);   // ✅ 계속 보호자
+    await prefs.remove('linkedUserId');
+
+    // 5) UX: “연결된 시니어 없음” 화면/배지로 안내
+    // ex) Navigator.pushReplacement(... GuardianEmptyStateScreen());
+    debugPrint('🔁 unlink done: guardian stays, no self diaries');
+  }
+
+  Future<Map<String, Map<String, String>>> loadCalendarData() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return {};
+
+    // 보호자는 자기 데이터 로딩 금지
+    if (globals.isGuardianMode) {
+      return {};
+    }
+
+    // 시니어만 자신의 데이터를 가져옴
+    final snapshot = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('diaries')
+        .get();
+
+    final result = <String, Map<String, String>>{};
+    for (final doc in snapshot.docs) {
+      final data = doc.data();
+      result[doc.id] = {
+        'emotion': data['emotion'] ?? '',
+        'diary': data['note'] ?? '',
+      };
+    }
+    return result;
+  }
+
   Future<void> _unlinkGuardian() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final lastLinkedUserId = globals.linkedUserId;
+    if (globals.isGuardianMode) return;
 
+    try {
       await FirebaseFirestore.instance
           .collection('users')
           .doc(user.uid)
           .update({'sharedWith': FieldValue.delete(),
-        'lastSharedWith' : lastLinkedUserId,
       });
 
+      debugPrint('👵 senior: sharedWith removed for ${user.uid}');
 
-      // 보호자 모드는 유지하고 공유만 끊음
-      await prefs.setBool('isGuardianMode', true);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('isGuardianMode', false);
       await prefs.remove('linkedUserId');
-      await prefs.setString('lastLinkedUserId', lastLinkedUserId ?? '');
 
-      globals.isGuardianMode = true;
+      globals.isGuardianMode = false;
       globals.linkedUserId = null;
       globals.isLinkedNotifier.value = false;
+
+      final selfData = await loadCalendarData();
+      if (mounted) {
+        setState(() {
+          emotionDataNotifier.value = selfData;
+          _viewingEmotion = null;
+          _viewingDiary = null;
+        });
+      }
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('공유가 해제되었습니다.')),
@@ -1328,8 +1488,17 @@ class _CalendarScreenState extends State<CalendarScreen> {
   DateTime? _selectedDay;
   UserRole _currentRole = UserRole.senior;
 
+  bool get _isSeniorLinked =>
+      globals.isGuardianMode &&
+          globals.isLinkedNotifier.value &&
+          globals.linkedUserId != null;
+
   @override
   Widget build(BuildContext context) {
+    debugPrint('🧱 build: _isSeniorLinked=$_isSeniorLinked, '
+        'isGuardian=${globals.isGuardianMode}, '
+        'isLinked=${globals.isLinkedNotifier.value}, '
+        'linkedUid=${globals.linkedUserId}');
     return Scaffold(
         resizeToAvoidBottomInset: false, // 키보드가 올라와도 달력 줄어들지 않음
         appBar: AppBar(
@@ -1456,7 +1625,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         );
                         if (confirm == true) {
                           await _unlinkGuardian();
-                          globals.isLinkedNotifier.value = false;
                         }
                       }
                     },
@@ -1595,7 +1763,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         ),
       body: Stack(
         children: [
-          if (globals.isGuardianMode)
+          if (globals.isGuardianMode && globals.isLinkedNotifier.value)
             StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance
                   .collection('users')
@@ -1604,7 +1772,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   .orderBy('timestamp', descending: true)
                   .snapshots(),
               builder: (context, snapshot) {
-                print('[StreamBuilder] snapshot updated');
                 if (snapshot.hasData) {
                   final newData = <String, Map<String, String>>{};
                   for (final doc in snapshot.data!.docs) {
@@ -1626,11 +1793,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           Column(
             children: [
               // 캘린더
-              ValueListenableBuilder(
-                valueListenable: emotionDataNotifier,
-                builder: (context, emotionMap, _) {
-                  print('[TableCalendar 빌드] focusedDay: $_focusedDay');
-                  return TableCalendar(
+              TableCalendar(
                     locale: 'ko_KR',
                     firstDay: DateTime.utc(2020, 1, 1),
                     lastDay: DateTime.utc(2030, 12, 31),
@@ -1658,6 +1821,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       disabledTextStyle: TextStyle(
                           color: Colors.grey), // 미래는 회색
                     ),
+
                     onDaySelected: (selectedDay, focusedDay) async {
                       print('[onDaySelected] focusedDay: $focusedDay');
                       if (!isSameOrBeforeToday(selectedDay)) {
@@ -1667,40 +1831,45 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       setState(() {
                         _selectedDay = selectedDay;
                         _focusedDay = focusedDay;
-                        print('[setState-onDaySelected] _selectedDay: $_selectedDay');
-                        print('[setState-onDaySelected] _focusedDay: $_focusedDay');
-
-                        if (globals.isGuardianMode) {
-                          final dateStr = formatDate(selectedDay);
-                          final data = emotionDataNotifier.value[dateStr];
-                          _viewingEmotion = data?['emotion'];
-                          _viewingDiary = data?['diary'];
-                        }
                       });
 
-                      if (!globals.isGuardianMode) {
-                        // 감정 입력 화면 다녀오기
-                        await Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) =>
-                                EmotionInputScreen(selectedDay: selectedDay),
-                          ),
-                        );
+                      final dateStr = formatDate(selectedDay);
 
-                        // 데이터 다시 불러오기
-                        await _loadEmotionData();
-
-                        Future.delayed(Duration(milliseconds: 50), () {
-                          setState(() {
-                            _focusedDay = selectedDay; // 다시 원래 날짜로 복귀해서 리렌더 유도
-                            print('[setState] 사용자가 날짜 선택해서 _focusedDay 바꿈: $_focusedDay');
-                          });
+                      if (globals.isGuardianMode && globals.isLinkedNotifier.value) {
+                        final data = emotionDataNotifier.value[dateStr];
+                        setState(() {
+                          _viewingEmotion = data?['emotion'];
+                          _viewingDiary = data?['diary'];
                         });
+                        return;
                       }
-                    },
 
-                    // 감정 이모티콘 셀
+                      // 감정 입력 화면 다녀오기
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) =>
+                              EmotionInputScreen(selectedDay: selectedDay),
+                        ),
+                      );
+
+                      // 저장 후 내 데이터 재로딩 + 포커스 복구 (딜레이 불필요)
+                      final selfData = await loadCalendarData();
+                      if (!mounted) return;
+                      setState(() {
+                        emotionDataNotifier.value = selfData;
+                        _focusedDay = selectedDay;
+                        _viewingEmotion = null;
+                        _viewingDiary = null;
+                      });
+                    },
+                onPageChanged: (focusedDay) {
+                      setState(() {
+                        _focusedDay = focusedDay;
+                      });
+                      },
+
+                    // ✅ 감정 이모티콘 렌더링: emotionDataNotifier.value 직접 조회
                     calendarBuilders: CalendarBuilders(
                       defaultBuilder: (context, day, focusedDay) {
                         if (globals.isGuardianMode && !globals.isLinkedNotifier.value) {
@@ -1711,16 +1880,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         final dateStr = formatDate(day);
                         final emotion = emotionDataNotifier
                             .value[dateStr]?['emotion'];
-                        String emoji = '';
-
-                        if (emotion != null) {
-                          if (emotion == '기분 좋음')
-                            emoji = '😊';
-                          else if (emotion == '보통')
-                            emoji = '😐';
-                          else
-                            emoji = '😞';
-                        }
+                        //String emoji = '';
+                        String emoji = getEmotionEmoji(emotion ?? '');
 
                         // shrinkFactor 계산
                         const baseRowHeight = 60.0;
@@ -1755,16 +1916,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         final dateStr = formatDate(day);
                         final emotion = emotionDataNotifier
                             .value[dateStr]?['emotion'];
-                        String emoji = '';
-
-                        if (emotion != null) {
-                          if (emotion == '기분 좋음')
-                            emoji = '😊';
-                          else if (emotion == '보통')
-                            emoji = '😐';
-                          else
-                            emoji = '😞';
-                        }
+                        String emoji = getEmotionEmoji(emotion ?? '');
 
                         const baseRowHeight = 60.0;
                         final shrinkFactor = 55.0 / baseRowHeight;
@@ -1794,16 +1946,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         final dateStr = formatDate(day);
                         final emotion = emotionDataNotifier
                             .value[dateStr]?['emotion'];
-                        String emoji = '';
-
-                        if (emotion != null) {
-                          if (emotion == '기분 좋음')
-                            emoji = '😊';
-                          else if (emotion == '보통')
-                            emoji = '😐';
-                          else
-                            emoji = '😞';
-                        }
+                        String emoji = getEmotionEmoji(emotion ?? '');
 
                         const baseRowHeight = 60.0;
                         final shrinkFactor = 55.0 / baseRowHeight;
@@ -1840,15 +1983,15 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         );
                       },
                     ),
-                  );
-                },
-              ),
+                  ),
+
+              // 📌 일기 내용 영역은 그대로 유지
               if (globals.isGuardianMode &&
                   globals.isLinkedNotifier.value == false &&
                   !isBeforeToday(_selectedDay!))
                 SizedBox.shrink()
               else
-                if (globals.isGuardianMode && _viewingEmotion != null)
+                if (globals.isGuardianMode && globals.isLinkedNotifier.value && _viewingEmotion != null)
                   Expanded(
                     child: Padding(
                       padding: const EdgeInsets.symmetric(

@@ -56,3 +56,10 @@ ios/Flutter/App.framework
 
 # VS Code settings (개인 설정 파일, 무시 추천)
 .vscode/
+
+# Firebase Functions 관련 파일/설정은 현재 사용하지 않음 (Spark 요금제 유지)
+# 필요해지면 .gitignore에서 제거하고 다시 추적하면 됨
+.firebaserc
+firebase.json
+functions/
+
