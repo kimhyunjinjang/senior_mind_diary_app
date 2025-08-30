@@ -462,24 +462,33 @@ class _InviteCodeInputScreenState extends State<InviteCodeInputScreen> {
   String? _error;
 
   Future<void> _verifyCode() async {
-    final input = _controller.text.trim();
-    final doc = await FirebaseFirestore.instance
-        .collection('inviteCodes')
-        .doc(input)
-        .get();
+    final auth = FirebaseAuth.instance;
+    if (auth.currentUser == null) {
+      await auth.signInAnonymously();
+    }
 
-    if (!doc.exists) {
+    final input = _controller.text.trim();
+    final codeRef = FirebaseFirestore.instance.collection('inviteCodes').doc(input);
+    final codeSnap = await codeRef.get();
+
+    if (!codeSnap.exists) {
       setState(() => _error = "존재하지 않는 코드입니다.");
       return;
     }
 
-    final data = doc.data()!;
+    final data = codeSnap.data()!;
     final ownerUid = data['ownerUid'] as String?;
     final used = (data['used'] as bool?) ?? false;
     final expiresAt = data['expiresAt'] as Timestamp?;
+    final viewerUid = FirebaseAuth.instance.currentUser!.uid;
 
     if (ownerUid == null) {
       setState(() => _error = "잘못된 코드입니다.");
+      return;
+    }
+
+    if (ownerUid == viewerUid) {
+      setState(() => _error = "본인의 코드는 사용할 수 없습니다.");
       return;
     }
 
@@ -494,54 +503,45 @@ class _InviteCodeInputScreenState extends State<InviteCodeInputScreen> {
       return;
     }
 
-    final viewerUid = FirebaseAuth.instance.currentUser!.uid;
-    if (ownerUid == viewerUid) {
-      setState(() => _error = "본인의 코드입니다.");
-      return;
-    }
-
     // 이미 연결된 보호자 있는지 검사 (1:1 강제)
-    final userDoc = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(ownerUid)
-        .get();
-      final alreadyLinked = userDoc.data()?['sharedWith'] != null;
-      if (alreadyLinked) {
-        setState(() => _error = "이미 연결된 사람이 있습니다.");
-        return;
-      }
-
     try {
-      // 보호자로 등록
       await FirebaseFirestore.instance
           .collection('users')
           .doc(ownerUid)
-          .set({
-        'sharedWith': viewerUid
-      }, SetOptions(merge: true));
-
-      // 초대코드 사용 처리 (사용 표시 + 즉시 무효화)
-      await FirebaseFirestore.instance
-          .collection('inviteCodes')
-          .doc(input)
-          .update({'used': true});
-
-      // 로컬에 보호자 모드 정보 저장
-      await saveGuardianModeInfo(ownerUid);
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("연결이 완료되었습니다.")),
-      );
-
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => CalendarScreen()),
-      );
-    } catch (e, stacktrace) {
-      print('🔥 Firestore 쓰기 에러: $e');
-      print('🔥 Stacktrace: $stacktrace');
-      setState(() => _error = "연결 중 문제가 발생했습니다.");
+          .set({'sharedWith' : viewerUid}, SetOptions(merge: true));
+    } on FirebaseException catch (e) {
+      if (e.code == 'permission-denied') {
+        setState(() => _error = "이미 연결된 사람이 있습니다.");
+        return;
+      }
+      setState(() => _error = "연결 중 오류가 발생했습니다. (${e.code})");
+      return;
+    } catch (e) {
+      setState(() => _error = "연결 중 알 수 없는 오류가 발생했습니다.");
+      return;
     }
+
+    // 초대코드 사용 처리 (사용 표시 + 즉시 무효화)
+    try {
+      await codeRef.update({'used': true});
+    } on FirebaseException catch (e) {
+      //규칙상 거부될 수 있음 → UX만 유지하고 무시
+      debugPrint('inviteCodes.used update denied (ok in Plan A): ${e.code}');
+    }
+
+    // 로컬에 보호자 모드 정보 저장
+    await saveGuardianModeInfo(ownerUid);
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("연결이 완료되었습니다.")),
+    );
+
+    /*Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => CalendarScreen()),
+    );*/
+    Navigator.pop(context, true);
   }
 
   @override
@@ -672,7 +672,7 @@ class RoleSelectScreen extends StatelessWidget {
                 );
               },
               icon: Icon(Icons.edit, size: 28),
-              label: Text("👴 나는 일기를 기록하려는 사용자입니다",
+              label: Text("나는 일기를 기록하려는 사용자입니다",
                 style: TextStyle(fontSize: 20),),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Color(0xFFFFF9C4),
@@ -691,7 +691,7 @@ class RoleSelectScreen extends StatelessWidget {
                 );
               },
               icon: Icon(Icons.visibility, size: 28),
-              label: Text("👨 나는 가족의 일기를 열람하려는 사용자입니다",
+              label: Text("나는 일기를 열람 하려는 사용자입니다",
                 style: TextStyle(fontSize: 20),),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Color(0xFFB2EBF2),
@@ -953,6 +953,9 @@ String formatDate(DateTime date) {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized(); // Flutter 초기화
+  if (kReleaseMode) {
+    debugPrint = (String? message, {int? wrapWidth}) {};
+  }
   await initializeDateFormatting('ko_KR', null); // 한글 날짜 포맷 초기화
   // Firebase 초기화
   await Firebase.initializeApp(
@@ -991,13 +994,22 @@ void main() async {
 
 // 보호자라면 나를 sharedWith로 갖는 senior 문서를 찾아 seniorUid 반환
 Future<String?> _getMySeniorUidIfGuardian(String myUid) async {
-  final q = await FirebaseFirestore.instance
-      .collection('users')
-      .where('sharedWith', isEqualTo: myUid)
-      .limit(1)
-      .get();
-  if (q.docs.isEmpty) return null;
-  return q.docs.first.id;
+  try {
+    final q = await FirebaseFirestore.instance
+        .collection('users')
+        .where('sharedWith', isEqualTo: myUid)
+        .limit(1)
+        .get();
+    if (q.docs.isEmpty) return null;
+    return q.docs.first.id;
+  } on FirebaseException catch (e) {
+    debugPrint('🔥 _getMySeniorUidIfGuardian Firestore error: ${e.code} ${e.message}');
+    // permission-denied면 일단 보호자 아님으로 취급
+    return null;
+  } catch (e, st) {
+    debugPrint('🔥 unexpected in _getMySeniorUidIfGuardian: $e\n$st');
+    return null;
+  }
 }
 
 Future<void> ensureUserDocumentExists() async {
@@ -1204,14 +1216,67 @@ class _CalendarScreenState extends State<CalendarScreen> {
   String _mostFrequentEmotion = '보통';
   String? _viewingEmotion;
   String? _viewingDiary;
+
   late final VoidCallback _listener;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _diarySub;
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _sharingListener;
+  bool get _isGuardianUnlinked =>
+      globals.isGuardianMode &&
+          !globals.isLinkedNotifier.value &&
+          (globals.linkedUserId == null);
+
+  Future<void> _setupStreams() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    // 1) 보호자면 연결된 시니어 UID 1회 조회, 아니면 본인 UID
+    final ownerUid = await (() async {
+      if (globals.isGuardianMode) {
+        final q = await FirebaseFirestore.instance
+            .collection('users')
+            .where('sharedWith', isEqualTo: user.uid) // 단일 문자열 sharedWith
+            .limit(1)
+            .get();
+        return q.docs.isEmpty ? null : q.docs.first.id;
+      } else {
+        return user.uid;
+      }
+    })();
+    if (ownerUid == null) return;
+
+    // (선택) 초기 한번 채우기: 첫 스냅샷 전 빈화면 방지
+    // await _primeOnce(ownerUid);
+
+    // 2) 실시간 구독 연결
+    await _diarySub?.cancel();
+    _diarySub = FirebaseFirestore.instance
+        .collection('users').doc(ownerUid).collection('diaries')
+        .orderBy('timestamp', descending: true) // 필요 시 정렬
+        .snapshots()
+        .listen((snap) {
+      final Map<String, Map<String, String>> map = {};
+      for (final d in snap.docs) {
+        final m = d.data();
+        map[d.id] = {
+          'emotion': m['emotion'] ?? '',
+          'diary'  : m['note'] ?? '',
+        };
+      }
+      if (mounted) {
+        emotionDataNotifier.value = map; // ✅ UI 즉시 반영
+      }
+    }, onError: (e) {
+      debugPrint('STREAM ERROR: $e');
+    });
+  }
 
   @override
   void initState() {
     super.initState();
-    _loadEmotionDataIfUserExists(); // 디버그용
-    _loadEmotionData(); // 앱 실행 시 감정 데이터 불러오기
+    _setupStreams();
+
+    //_loadEmotionDataIfUserExists(); // 디버그용
+    //_loadEmotionData(); // 앱 실행 시 감정 데이터 불러오기
     _debugPrintAppDir(); // 콘솔에 경로 출력
     //_loadSharingStatus(); // 앱 실행 시 공유 상태 로딩
 
@@ -1225,6 +1290,19 @@ class _CalendarScreenState extends State<CalendarScreen> {
             getMostFrequentEmotion(emotionDataNotifier.value);
       });
     };
+
+    // (선택) 초기 단발 로딩
+    Future<void> _primeOnce(String ownerUid) async {
+      final once = await FirebaseFirestore.instance
+          .collection('users').doc(ownerUid).collection('diaries')
+          .get();
+      final Map<String, Map<String, String>> map = {};
+      for (final d in once.docs) {
+        final m = d.data();
+        map[d.id] = {'emotion': m['emotion'] ?? '', 'diary': m['note'] ?? ''};
+      }
+      emotionDataNotifier.value = map;
+    }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       emotionDataNotifier.addListener(_listener);
@@ -1279,6 +1357,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         debugPrint('❗ guardian stream error: $error');
         await _unlinkAndStayGuardian();
       });
+
       // 시니어의 경우 : 본인 문서를 감시
     } else {
       _sharingListener = FirebaseFirestore.instance
@@ -1304,6 +1383,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   @override
   void dispose() {
+    _diarySub?.cancel();
     _sharingListener?.cancel();
     emotionDataNotifier.removeListener(_listener);
     super.dispose();
@@ -1495,10 +1575,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   @override
   Widget build(BuildContext context) {
-    debugPrint('🧱 build: _isSeniorLinked=$_isSeniorLinked, '
+    /*debugPrint('🧱 build: _isSeniorLinked=$_isSeniorLinked, '
         'isGuardian=${globals.isGuardianMode}, '
         'isLinked=${globals.isLinkedNotifier.value}, '
-        'linkedUid=${globals.linkedUserId}');
+        'linkedUid=${globals.linkedUserId}');*/
     return Scaffold(
         resizeToAvoidBottomInset: false, // 키보드가 올라와도 달력 줄어들지 않음
         appBar: AppBar(
@@ -1575,21 +1655,38 @@ class _CalendarScreenState extends State<CalendarScreen> {
                               ),
                         ).then((confirm) async {
                           if (confirm == true) {
-                            // 인증 로그아웃
+                            // 1) 스트림 리스너 정리 (메모리/콜백 잔상 방지)
+                            try { await _sharingListener?.cancel(); } catch (_) {}
+                            _sharingListener = null;
+
+                            // 2) 인증 로그아웃
                             await FirebaseAuth.instance.signOut();
 
-                            // 로컬 정보 초기화
-                            final prefs = await SharedPreferences.getInstance();
-                            if (globals.isGuardianMode) {
-                              // 공유 중인 경우에만 초기화
-                              await prefs.setBool('isGuardianMode', false);
-                              await prefs.remove('linkedUserId');
-
-                              globals.isGuardianMode = false;
-                              globals.linkedUserId = null;
-                              globals.isLinkedNotifier.value = false;
+                            // 3) 전역/메모리 상태 초기화 (역할 구분 없이 공통 처리)
+                            globals.isGuardianMode = false;
+                            globals.linkedUserId = null;
+                            globals.isLinkedNotifier.value = false;
+                            emotionDataNotifier.value = {};
+                            if (mounted) {
+                              setState(() {
+                                _viewingEmotion = null;
+                                _viewingDiary = null;
+                              });
                             }
 
+                            // 4) 로컬 저장소 초기화 (잔존 캐시로 인한 혼선 방지)
+                            final prefs = await SharedPreferences.getInstance();
+                            await prefs.setBool('isGuardianMode', false);
+                            await prefs.remove('linkedUserId');
+                            await prefs.remove('emotionData');
+
+                            // 5) 새 화면에서 currentUser!.uid NPE 방지
+                            // main()이 다시 돌지 않으므로 여기서 익명 재로그인 처리
+                            await _signInAnonymously();
+                            await ensureUserDocumentExists();
+
+                            // 6) 홈으로 깔끔히 시작 (스택 비움)
+                            if (!mounted) return;
                             Navigator.pushAndRemoveUntil(
                               context,
                               MaterialPageRoute(
@@ -1599,9 +1696,24 @@ class _CalendarScreenState extends State<CalendarScreen> {
                           }
                         });
                       } else if (value == '공유 등록') {
-                        Navigator.push(context, MaterialPageRoute(
-                          builder: (context) => RoleSelectScreen(),
-                        ));
+                        final isGuardianUnlinkedNow = _isGuardianUnlinked;
+                        if (isGuardianUnlinkedNow) {
+                          if (!mounted) return;
+                          final ok = await Navigator.push<bool>(
+                            context,
+                            MaterialPageRoute(builder: (_) => InviteCodeInputScreen()),
+                          );
+                          if (ok == true){
+                            await _startSharingStatusListener();
+                            if (mounted) setState(() {});
+                          }
+
+                        } else {
+                          if (!mounted) return;
+                          Navigator.push(context, MaterialPageRoute(
+                            builder: (context) => RoleSelectScreen(),
+                          ));
+                        }
                       } else if (value == '공유 끊기') {
                         final confirm = await showDialog<bool>(
                           context: context,
@@ -1632,7 +1744,39 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       final user = FirebaseAuth.instance.currentUser;
                       final List<PopupMenuEntry<String>> items = [];
 
-                      if (user == null) {
+                      // 미연결인 보호자일 때: 최소 메뉴만 노출
+                      if (_isGuardianUnlinked) {
+                        // 1) 공유 등록
+                        items.add(
+                          PopupMenuItem(
+                            value: '공유 등록',
+                            child: Row(children: const [
+                              Icon(Icons.key, color: Colors.black), SizedBox(width: 10),
+                              Text('공유 등록'),
+                            ]),
+                          ),
+                        );
+
+                        // 2) (익명일 때만) 계정 등록/로그인
+                        if (user == null || user.isAnonymous) {
+                          items.addAll([
+                            const PopupMenuDivider(),
+                            PopupMenuItem(
+                              value: '계정 등록',
+                              child: Row(children: const [
+                                Icon(Icons.person_add, color: Colors.black), SizedBox(width: 10),
+                                Text('계정 등록'),
+                              ]),
+                            ),
+                            PopupMenuItem(
+                              value: '로그인',
+                              child: Row(children: const [
+                                Icon(Icons.login, color: Colors.black), SizedBox(width: 10),
+                                Text('로그인'),
+                              ]),
+                            ),
+                          ]);
+                        }
                         return items;
                       }
 
@@ -1763,7 +1907,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         ),
       body: Stack(
         children: [
-          if (globals.isGuardianMode && globals.isLinkedNotifier.value)
+          /*if (globals.isGuardianMode && globals.isLinkedNotifier.value)
             StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance
                   .collection('users')
@@ -1772,6 +1916,17 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   .orderBy('timestamp', descending: true)
                   .snapshots(),
               builder: (context, snapshot) {
+                if (snapshot.hasError) {
+                  final e = snapshot.error;
+                  if (e is FirebaseException && e.code == 'permission-denied') {
+                    // 권한 상실 → 즉시 공유 해제 처리 + 캐시 비우기
+                    WidgetsBinding.instance.addPostFrameCallback((_) async {
+                      await _unlinkAndStayGuardian();
+                    });
+                  }
+                  return const SizedBox.shrink();
+                }
+
                 if (snapshot.hasData) {
                   final newData = <String, Map<String, String>>{};
                   for (final doc in snapshot.data!.docs) {
@@ -1788,7 +1943,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 }
                 return const SizedBox.shrink();
               },
-            ),
+            ),*/
 
           Column(
             children: [
@@ -1823,6 +1978,15 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     ),
 
                     onDaySelected: (selectedDay, focusedDay) async {
+                      if (_isGuardianUnlinked) {
+                        setState(() {
+                          _selectedDay = selectedDay;
+                          _focusedDay = focusedDay;
+                          _viewingEmotion = null;
+                          _viewingDiary = null;
+                        });
+                        return;
+                      }
                       print('[onDaySelected] focusedDay: $focusedDay');
                       if (!isSameOrBeforeToday(selectedDay)) {
                         return;
@@ -2237,8 +2401,8 @@ class EmotionButton extends StatelessWidget {
         height: 100,
         decoration: BoxDecoration(
           color: selected
-              ? color.withValues(alpha: 1.0)
-              : color.withValues(alpha: 0.6),
+              ? color.withAlphaFraction(1.0)
+              : color.withAlphaFraction(0.6),
           borderRadius: BorderRadius.circular(12),
           border: selected ? Border.all(color: Colors.black, width: 2) : null,
         ),
