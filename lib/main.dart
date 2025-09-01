@@ -1230,7 +1230,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
     if (user == null) return;
 
     // 1) 보호자면 연결된 시니어 UID 1회 조회, 아니면 본인 UID
-    final ownerUid = await (() async {
+    final ownerUid = globals.isGuardianMode ? globals.linkedUserId : user.uid;
+    if (ownerUid == null || ownerUid.isEmpty) {
+      return;
+    }
+
+    /*final ownerUid = await (() async {
       if (globals.isGuardianMode) {
         final q = await FirebaseFirestore.instance
             .collection('users')
@@ -1243,7 +1248,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       }
     })();
     if (ownerUid == null) return;
-
+*/
     // (선택) 초기 한번 채우기: 첫 스냅샷 전 빈화면 방지
     // await _primeOnce(ownerUid);
 
@@ -1344,14 +1349,23 @@ class _CalendarScreenState extends State<CalendarScreen> {
         debugPrint('👀 guardian snapshot: data=$data, sharedWith=${data?['sharedWith']}');
         final sharedWith = data?['sharedWith'];
         final bool isLinkedNow  = sharedWith == currentUid;
+        final bool wasLinked = globals.isLinkedNotifier.value;
 
-        if (globals.isLinkedNotifier.value != isLinkedNow) {
+        if (wasLinked != isLinkedNow) {
           globals.isLinkedNotifier.value = isLinkedNow; // 앱 전역 상태 플래그 (보호자 연결이 안 되어 있음을 방송)
         }
 
         if (!isLinkedNow) {
           await _unlinkAndStayGuardian();
+          await _diarySub?.cancel();
+          _diarySub = null;
           return;
+        }
+
+        if ((!wasLinked && isLinkedNow) || _diarySub == null) {
+          await _diarySub?.cancel();
+          _diarySub = null;
+          await _setupStreams(); // 새로 연결되면 일기 스트림도 다시 구독
         }
       }, onError: (error) async {
         debugPrint('❗ guardian stream error: $error');
@@ -1415,6 +1429,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
     // 2) 리스너 정리
     try { await _sharingListener!.cancel(); } catch (_) {}
+    try { await _diarySub?.cancel(); } catch (_) {}
+    _diarySub = null;
 
     // 3) UI에서 시니어 흔적 제거 (빈 상태로)
     if (mounted) {
@@ -1575,6 +1591,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final bool canView = globals.isGuardianMode && globals.isLinkedNotifier.value;
+    final String? sel = _selectedDay != null ? formatDate(_selectedDay!) : null;
+    final Map<String, String>? liveView =
+    (canView && sel != null) ? emotionDataNotifier.value[sel] : null;
     /*debugPrint('🧱 build: _isSeniorLinked=$_isSeniorLinked, '
         'isGuardian=${globals.isGuardianMode}, '
         'isLinked=${globals.isLinkedNotifier.value}, '
@@ -1705,6 +1725,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                           );
                           if (ok == true){
                             await _startSharingStatusListener();
+                            await _setupStreams();
                             if (mounted) setState(() {});
                           }
 
@@ -1982,12 +2003,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         setState(() {
                           _selectedDay = selectedDay;
                           _focusedDay = focusedDay;
-                          _viewingEmotion = null;
-                          _viewingDiary = null;
+                          //_viewingEmotion = null;
+                          //_viewingDiary = null;
                         });
                         return;
                       }
-                      print('[onDaySelected] focusedDay: $focusedDay');
+                      //print('[onDaySelected] focusedDay: $focusedDay');
                       if (!isSameOrBeforeToday(selectedDay)) {
                         return;
                       }
@@ -1997,7 +2018,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         _focusedDay = focusedDay;
                       });
 
-                      final dateStr = formatDate(selectedDay);
+                      /*final dateStr = formatDate(selectedDay);
 
                       if (globals.isGuardianMode && globals.isLinkedNotifier.value) {
                         final data = emotionDataNotifier.value[dateStr];
@@ -2005,6 +2026,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
                           _viewingEmotion = data?['emotion'];
                           _viewingDiary = data?['diary'];
                         });
+                        return;
+                      }*/
+
+                      if (globals.isGuardianMode && globals.isLinkedNotifier.value) {
                         return;
                       }
 
@@ -2154,8 +2179,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   globals.isLinkedNotifier.value == false &&
                   !isBeforeToday(_selectedDay!))
                 SizedBox.shrink()
-              else
-                if (globals.isGuardianMode && globals.isLinkedNotifier.value && _viewingEmotion != null)
+              else if (canView && liveView != null)
                   Expanded(
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
@@ -2197,8 +2221,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                     ],
                                   ),
                                   Text(
-                                    //_viewingEmotion ?? '',
-                                    getEmotionEmoji(_viewingEmotion ?? ''),
+                                    getEmotionEmoji(liveView?['emotion'] ?? ''),
                                     style: TextStyle(fontSize: 20),
                                   ),
                                 ],
@@ -2207,7 +2230,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
                               // 일기 본문
                               Text(
-                                _viewingDiary ?? '작성된 일기가 없습니다.',
+                                (liveView?['diary']?.isNotEmpty ?? false) ? liveView!['diary']! : '작성된 일기가 없습니다.',
                                 style: TextStyle(
                                   fontSize: 16,
                                   height: 1.8,
