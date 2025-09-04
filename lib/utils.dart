@@ -1,4 +1,9 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'main.dart';
 
 bool isBeforeToday(DateTime day) {
   final today = DateTime.now();
@@ -16,3 +21,44 @@ extension ColorAlphaCompat on Color {
     return withAlpha((v * 255).round()); // deprecated 아님, 광범위 호환
   }
 }
+
+String emotionKeyFor(String uid) => 'emotionData:$uid';
+
+Future<Map<String, Map<String, String>>> readEmotionCache(String key) async {
+  final prefs = await SharedPreferences.getInstance();
+  final s = prefs.getString(key);
+  if (s == null) return {};
+  final raw = json.decode(s) as Map<String, dynamic>;
+  return raw.map((k, v) => MapEntry(k, Map<String, String>.from(v)));
+}
+
+Future<void> writeEmotionCache(
+    String key,
+    Map<String, Map<String, String>> data,
+    ) async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setString(key, json.encode(data));
+}
+
+Future<void> ensureUserDocDefaults() async {
+  final uid = FirebaseAuth.instance.currentUser?.uid;
+  if (uid == null) return;
+
+  final ref = FirebaseFirestore.instance.collection('users').doc(uid);
+  final snap = await ref.get();
+
+  final data = snap.data();
+  final hasField = (data != null && data.containsKey('canWriteSelf'));
+
+  if (!hasField) {
+    await ref.set({'canWriteSelf': true}, SetOptions(merge: true));
+  }
+}
+
+void goHome(BuildContext context) {
+  Navigator.of(context).pushAndRemoveUntil(
+    MaterialPageRoute(builder: (_) => CalendarScreen()),
+        (route) => false,
+  );
+}
+

@@ -159,6 +159,11 @@ class _AccountRegisterScreenState extends State<AccountRegisterScreen> {
         if (user != null && user.isAnonymous) {
           // 익명 계정 → 이메일 계정으로 연결 (UID 유지)
           await user.linkWithCredential(credential);
+          // 🔄 등록 직후 상태 안정화 (추가)
+          await FirebaseAuth.instance.currentUser?.reload();
+          await FirebaseAuth.instance.currentUser?.getIdToken(true);
+          await ensureUserDocumentExists();   // users/{uid} 문서 없으면 생성
+          await ensureUserDocDefaults();      // canWriteSelf 없으면 true만 세팅
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('이미 계정이 등록되어 있습니다.')),
@@ -166,10 +171,8 @@ class _AccountRegisterScreenState extends State<AccountRegisterScreen> {
           return;
         }
         // 등록 성공 시 메인 화면으로 이동
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => CalendarScreen()),
-        );
+        // 화면 전환: 스택 초기화로 깔끔하게 진입 (교체)
+        goHome(context);
       } on FirebaseAuthException catch (e) {
         setState(() {
           if (e.code == 'email-already-in-use') {
@@ -318,10 +321,7 @@ class _LoginScreenState extends State<LoginScreen> {
       );
 
       // 로그인 성공 → 메인화면 이동
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => CalendarScreen()),
-      );
+      goHome(context);
     } on FirebaseAuthException catch (e) {
       setState(() {
         if (e.code == 'user-not-found') {
@@ -528,6 +528,12 @@ class _InviteCodeInputScreenState extends State<InviteCodeInputScreen> {
       //규칙상 거부될 수 있음 → UX만 유지하고 무시
       debugPrint('inviteCodes.used update denied (ok in Plan A): ${e.code}');
     }
+
+    // 보호자 계정에 canWriteSelf:false 추가
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(viewerUid)
+        .set({'canWriteSelf': false}, SetOptions(merge: true));
 
     // 로컬에 보호자 모드 정보 저장
     await saveGuardianModeInfo(ownerUid);
@@ -854,44 +860,24 @@ class EmotionStatsScreen extends StatelessWidget {
   const EmotionStatsScreen({super.key});
 
   Future<Map<String, double>> _getEmotionCounts() async {
-    final prefs = await SharedPreferences.getInstance();
-    final jsonString = prefs.getString('emotionData');
-    Map<String, Map<String, String>> data = {};
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return {'😊 기분 좋음':0,'😐 보통':0,'😞 기분 안 좋음':0};
 
-    if (jsonString != null) {
-      final raw = json.decode(jsonString);
-      data = Map<String, Map<String, String>>.from(
-        raw.map((k, v) => MapEntry(k, Map<String, String>.from(v))),
-      );
-    }
-    else {
-      // SharedPreferences에 없으면, Firestore에서 가져오기
+    final key = emotionKeyFor(uid);
+    var data = await readEmotionCache(key);
+    if (data.isEmpty) {
+      // 캐시가 없으면 Firestore 한 번 읽어서 채움(선택)
       data = await loadEmotionDataFromFirestore();
     }
 
-    // 초기화
-    Map<String, double> counts = {
-      '😊 기분 좋음': 0,
-      '😐 보통': 0,
-      '😞 기분 안 좋음': 0,
-    };
-
-    // 데이터 집계
-    for (var value in data.values) {
-      final emotion = value['emotion'];
-      switch (emotion) {
-        case '기분 좋음':
-          counts['😊 기분 좋음'] = counts['😊 기분 좋음']! + 1;
-          break;
-        case '보통':
-          counts['😐 보통'] = counts['😐 보통']! + 1;
-          break;
-        case '기분 안 좋음':
-          counts['😞 기분 안 좋음'] = counts['😞 기분 안 좋음']! + 1;
-          break;
+    final counts = {'😊 기분 좋음':0.0,'😐 보통':0.0,'😞 기분 안 좋음':0.0};
+    for (final v in data.values) {
+      switch (v['emotion']) {
+        case '기분 좋음': counts['😊 기분 좋음'] = counts['😊 기분 좋음']! + 1; break;
+        case '보통': counts['😐 보통'] = counts['😐 보통']! + 1; break;
+        case '기분 안 좋음': counts['😞 기분 안 좋음'] = counts['😞 기분 안 좋음']! + 1; break;
       }
     }
-
     return counts;
   }
 
@@ -967,7 +953,9 @@ void main() async {
     await _signInAnonymously();
     currentUser = FirebaseAuth.instance.currentUser;
   }
-  
+
+  await ensureUserDocDefaults();
+
   // Firestore 문서 자동 생성
   await ensureUserDocumentExists();
   
@@ -979,7 +967,7 @@ void main() async {
   globals.isGuardianMode = isGuardian;
   globals.linkedUserId = seniorUid;
   globals.isLinkedNotifier.value = isGuardian && seniorUid.isNotEmpty;
-  
+
   // 보호자 모드/연결 상태를 로컬에도 동기화
   final prefs = await SharedPreferences.getInstance();
   await prefs.setBool('isGuardianMode', isGuardian);
@@ -1051,7 +1039,6 @@ Future<void> saveEmotionAndNote({
   if (user == null) {
     return;
   }
-
   if (globals.isGuardianMode) {
     debugPrint('❌ guardian cannot write diaries');
     return;
@@ -1231,7 +1218,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
     // 1) 보호자면 연결된 시니어 UID 1회 조회, 아니면 본인 UID
     final ownerUid = globals.isGuardianMode ? globals.linkedUserId : user.uid;
+    debugPrint('📡 _setupStreams: ownerUid=$ownerUid');
     if (ownerUid == null || ownerUid.isEmpty) {
+      debugPrint('⏸ ownerUid null → 구독 보류');
       return;
     }
 
@@ -1259,6 +1248,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         .orderBy('timestamp', descending: true) // 필요 시 정렬
         .snapshots()
         .listen((snap) {
+      debugPrint('📥 stream event: ${snap.docs.length} docs (fromCache=${snap.metadata.isFromCache}) for $ownerUid');
       final Map<String, Map<String, String>> map = {};
       for (final d in snap.docs) {
         final m = d.data();
@@ -1268,6 +1258,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         };
       }
       if (mounted) {
+        debugPrint('📥 guardian stream ok: ${map.length} docs');  // 추가
         emotionDataNotifier.value = map; // ✅ UI 즉시 반영
       }
     }, onError: (e) {
@@ -1278,6 +1269,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   @override
   void initState() {
     super.initState();
+    debugPrint('🟢 init: isGuardian=${globals.isGuardianMode}, linked=${globals.isLinkedNotifier.value}, linkedUid=${globals.linkedUserId}');
     _setupStreams();
 
     //_loadEmotionDataIfUserExists(); // 디버그용
@@ -1421,6 +1413,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   Future<void> _unlinkAndStayGuardian() async {
     debugPrint('🔁 unlink: stay as guardian (no self data)');
+    // 0) 해제 전, 기존 연결돼 있던 시니어 UID 백업
+    final oldSeniorUid = globals.linkedUserId;
 
     // 1) 보호자 모드 유지 + 링크 해제
     globals.isGuardianMode = true;
@@ -1430,6 +1424,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     // 2) 리스너 정리
     try { await _sharingListener!.cancel(); } catch (_) {}
     try { await _diarySub?.cancel(); } catch (_) {}
+    _sharingListener = null;
     _diarySub = null;
 
     // 3) UI에서 시니어 흔적 제거 (빈 상태로)
@@ -1446,8 +1441,17 @@ class _CalendarScreenState extends State<CalendarScreen> {
     await prefs.setBool('isGuardianMode', true);   // ✅ 계속 보호자
     await prefs.remove('linkedUserId');
 
-    // 5) UX: “연결된 시니어 없음” 화면/배지로 안내
-    // ex) Navigator.pushReplacement(... GuardianEmptyStateScreen());
+    // 5) 뷰 캐시 제거 : emotionData:<oldSeniorUid> 삭제
+    if (oldSeniorUid != null && oldSeniorUid.isNotEmpty) {
+      // utils.dart에 정의한 키 헬퍼를 쓰는 경우:
+      final cacheKey = emotionKeyFor(oldSeniorUid); // "emotionData:<uid>"
+      await prefs.remove(cacheKey);
+
+      // (선택) 과거 단일 키를 쓰던 레거시 캐시도 같이 제거하고 싶다면:
+      await prefs.remove('emotionData');
+      debugPrint('🧹 removed view cache for senior=$oldSeniorUid (key=$cacheKey)');
+    }
+
     debugPrint('🔁 unlink done: guardian stays, no self diaries');
   }
 
@@ -2271,21 +2275,18 @@ class _EmotionInputScreenState extends State<EmotionInputScreen> {
   }
 
   Future<void> _loadSavedDiary() async {
-    final prefs = await SharedPreferences.getInstance();
-    final jsonString = prefs.getString('emotionData');
-    if (jsonString != null) {
-      final raw = json.decode(jsonString);
-      final data = Map<String, Map<String, String>>.from(
-        raw.map((k, v) => MapEntry(k, Map<String, String>.from(v))),
-      );
-      final formattedDate = formatDate(widget.selectedDay);
-      final saved = data[formattedDate];
-      if (saved != null) {
-        setState(() {
-          _selectedEmotion = saved['emotion'];
-          _diaryController.text = saved['diary'] ?? '';
-        });
-      }
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return; // 익명이라도 uid는 있음
+    final key = emotionKeyFor(uid);
+
+    final data = await readEmotionCache(key);
+    final formattedDate = formatDate(widget.selectedDay);
+    final saved = data[formattedDate];
+    if (saved != null) {
+      setState(() {
+        _selectedEmotion = saved['emotion'];
+        _diaryController.text = saved['diary'] ?? '';
+      });
     }
   }
 
@@ -2297,27 +2298,24 @@ class _EmotionInputScreenState extends State<EmotionInputScreen> {
       return;
     }
 
-    final prefs = await SharedPreferences.getInstance();
-    final jsonString = prefs.getString('emotionData');
-    Map<String, dynamic> data = {};
-    if (jsonString != null) {
-      data = Map<String, dynamic>.from(json.decode(jsonString));
-    }
+    final uid = FirebaseAuth.instance.currentUser!.uid;
+    if (uid == null) return;
+    final key = emotionKeyFor(uid);
 
-    final formattedDate = formatDate(widget.selectedDay);
-    data[formattedDate] = {
-      'emotion': _selectedEmotion!,
-      'diary': _diaryController.text,
-    };
+    // 1) 기존 캐시 읽기
+    final data = await readEmotionCache(key);
 
-    await prefs.setString('emotionData', json.encode(data));
-    emotionDataNotifier.value = Map<String, Map<String, String>>.from(
-        data.map((k, v) => MapEntry(k, Map<String, String>.from(v)))
-    );
+    // 2) 오늘 날짜 데이터 업데이트
+    final date = formatDate(widget.selectedDay);
+    data[date] = {'emotion': _selectedEmotion!, 'diary': _diaryController.text};
 
-    // Firestore 저장
+    // 3) 캐시 저장 + UI 반영
+    await writeEmotionCache(key, data);
+    emotionDataNotifier.value = data;
+
+    // 4) Firestore 저장
     await saveEmotionAndNote(
-      date: formattedDate,
+      date: date,
       emotion: _selectedEmotion!,
       note: _diaryController.text,
     );
