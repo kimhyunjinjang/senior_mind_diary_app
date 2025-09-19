@@ -278,7 +278,7 @@ class InviteCodeGenerateScreen extends StatelessWidget {
   }
 
   String _generateRandomCode(int length) {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
     final rand = Random.secure();
     return List
         .generate(length, (_) => chars[rand.nextInt(chars.length)])

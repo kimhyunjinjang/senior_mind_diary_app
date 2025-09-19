@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../screens/calendar_screen.dart';
 import '../screens/account_register_screen.dart';
+import '../screens/role_select_screen.dart';
 
 class AuthGate extends StatelessWidget {
   const AuthGate({super.key});
@@ -32,10 +33,11 @@ class AuthGate extends StatelessWidget {
             }
             final data = snap.data?.data() ?? {};
             final role = (data['role'] as String?) ?? '';
+            final onboardingDone = data['onboardingDone'] == true;
 
-            if (role.isEmpty) {
-              // 역할 미설정 사용자만 역할 선택으로
-              return const AccountRegisterScreen();
+            if (role.isEmpty || onboardingDone == false) {
+              // ✅ 역할이 없거나 온보딩 미완 → 역할 선택 화면
+              return const RoleSelectScreen();
             }
 
             // 역할 확정 → 메인(보호자/시니어 공용 달력)
