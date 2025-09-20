@@ -14,6 +14,7 @@ import 'dart:math' as math;
 import 'my_invite_code_screen.dart';
 import 'dart:async';
 import 'invite_code_input_screen.dart';
+import 'delete_account_screen.dart';
 
 // ✅ 외부 전역: emotionDataNotifier (Map<String, Map<String,String>>)가 있다고 가정
 //   예: final emotionDataNotifier = ValueNotifier<Map<String, Map<String, String>>>({});
@@ -273,8 +274,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
               Navigator.push(context, MaterialPageRoute(builder: (_) => const MyInviteCodeScreen()));
             } else if (v == '코드 입력') {
               Navigator.push(context, MaterialPageRoute(builder: (_) => const InviteCodeInputScreen()));
-            }
-            else if (v == '공유 끊기') {
+            } else if (v == '공유 끊기') {
               final ok = await showDialog<bool>(
                 context: context,
                 builder: (_) => AlertDialog(
@@ -300,6 +300,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 ),
               );
               if (ok == true) await _signOut();
+            } else if (v == '계정 삭제') {
+              if (!mounted) return;
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const DeleteAccountScreen()));
             }
           },
           itemBuilder: (context) {
@@ -341,6 +344,15 @@ class _CalendarScreenState extends State<CalendarScreen> {
             items.add(PopupMenuItem(
               value: '로그아웃',
               child: Row(children: const [Icon(Icons.logout), SizedBox(width: 10), Text('로그아웃')]),
+            ));
+            items.add(const PopupMenuDivider());
+            items.add(PopupMenuItem(
+              value: '계정 삭제',
+              child: Row(children: const [
+                Icon(Icons.delete_outline),
+                SizedBox(width: 10),
+                Text('계정 삭제'),
+              ]),
             ));
             return items;
           },
