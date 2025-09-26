@@ -18,11 +18,18 @@ class EmotionInputScreen extends StatefulWidget {
 class _EmotionInputScreenState extends State<EmotionInputScreen> {
   final TextEditingController _diaryController = TextEditingController();
   String? _selectedEmotion;
+  bool _loading = true;
 
   @override
   void initState() {
     super.initState();
     _loadSavedDiary(); // 일기 내용 불러오기
+  }
+
+  @override
+  void dispose() {
+    _diaryController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadSavedDiary() async {
@@ -34,11 +41,16 @@ class _EmotionInputScreenState extends State<EmotionInputScreen> {
     final formattedDate = formatDate(widget.selectedDay);
     final saved = data[formattedDate];
     if (saved != null) {
-      setState(() {
-        _selectedEmotion = saved['emotion'];
-        _diaryController.text = saved['diary'] ?? '';
-      });
+      _selectedEmotion = saved['emotion'];
+      final text = saved['diary'] ?? '';
+
+      _diaryController.value = _diaryController.value.copyWith(
+        text: text,
+        selection: TextSelection.collapsed(offset: text.length),
+        composing: TextRange.empty,
+      );
     }
+    if (mounted) setState(() => _loading = false);
   }
 
   void _saveData() async {
@@ -124,7 +136,9 @@ class _EmotionInputScreenState extends State<EmotionInputScreen> {
               controller: _diaryController,
               maxLines: 10,
               decoration: InputDecoration(
-                hintText: '오늘 하루를 간단히 기록해보세요',
+                hintText: (_diaryController.text.isEmpty && !_loading)
+                    ? '오늘 하루를 간단히 기록해보세요'
+                    : null,
                 border: OutlineInputBorder(),
               ),
             ),
