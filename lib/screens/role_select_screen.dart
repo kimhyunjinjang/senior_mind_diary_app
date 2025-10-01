@@ -87,6 +87,9 @@ class _RoleSelectScreenState extends State<RoleSelectScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final shape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(14));
+    final txt = const TextStyle(fontSize: 16, fontWeight: FontWeight.w600);
+
     return WillPopScope( // ← 원웨이: 물리 뒤로가기 차단
       onWillPop: () async => false,
       child: Scaffold(
@@ -107,37 +110,55 @@ class _RoleSelectScreenState extends State<RoleSelectScreen> {
                   ),
                   const SizedBox(height: 16),
                   const Text(
-                    '• "공유하지 않고 사용"은 혼자 일기 쓰기\n'
-                        '• "지금 바로 보호자 초대"는 초대코드를 즉시 보여줍니다\n'
-                        '• "보호자"는 초대코드를 받아 연결해 조회만 합니다',
+                    '• "나 혼자 일기 쓰기"는 다른 사람과 공유하지 않고 나만 일기를 씁니다\n'
+                        '• "공유하여 일기 쓰기"는 다른 사람에게 초대코드를 보내고 일기를 공유합니다\n'
+                        '• "가족 및 지인으로 일기만 읽기"는 초대코드를 받아 연결해 일기를 볼 수 있습니다',
                     style: TextStyle(color: Colors.black54),
                   ),
                   const SizedBox(height: 28),
 
                   // ① 공유하지 않고 사용
-                  ElevatedButton(
+                  ElevatedButton.icon(
                     onPressed: _useWithoutSharing,
                     style: ElevatedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: shape,
+                      backgroundColor: Colors.indigo.shade500,
+                      foregroundColor: Colors.white,
+                      textStyle: txt,
                     ),
-                    child: const Text('공유하지 않고 사용'),
+                    icon: const Icon(Icons.edit_note),
+                    label: const Text('나 혼자 일기 쓰기'),
                   ),
                   const SizedBox(height: 12),
 
                   // ② 지금 바로 보호자 초대
-                  OutlinedButton(
+                  OutlinedButton.icon(
                     onPressed: _inviteNow,
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: shape,
+                      side: BorderSide(color: Colors.indigo.shade400, width: 1.4),
+                      foregroundColor: Colors.indigo.shade600,
+                      textStyle: txt,
                     ),
-                    child: const Text('지금 바로 보호자 초대'),
+                    icon: const Icon(Icons.group_add),
+                    label: const Text('공유하며 일기 쓰기'),
                   ),
                   const SizedBox(height: 12),
 
                   // ③ 보호자
-                  TextButton(
+                  OutlinedButton.icon(
                     onPressed: _chooseGuardian,
-                    child: const Text('보호자로 사용(코드 입력)'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: shape,
+                      side: BorderSide(color: Colors.grey.shade400, width: 1.2),
+                      foregroundColor: Colors.black87,
+                      textStyle: txt,
+                    ),
+                    icon: const Icon(Icons.visibility),
+                    label: const Text('가족 및 지인으로 일기만 읽기'),
                   ),
                 ],
               ),
