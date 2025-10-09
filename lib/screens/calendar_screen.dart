@@ -379,7 +379,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }
     if (_ownerUid == null || _ownerUid!.isEmpty) {
       // 보호자인데 아직 연결 안 되어 있을 때(원웨이 정책상 여기서 온보딩으로 돌려보내지 않음)
-      return Scaffold(appBar: appBar, body: const Center(child: Text('연결된 시니어가 없습니다.')));
+      return Scaffold(appBar: appBar, body: const Center(child: Text('연결된 시니어가 없습니다.\n[메뉴]에 [코드 입력]을 해주세요.')));
     }
 
     // ownerUid 확정 → 해당 diaries 스트림 구독
@@ -485,6 +485,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       cellPadding: EdgeInsets.zero,
                       cellMargin: EdgeInsets.zero,
                       tablePadding: EdgeInsets.zero,
+                      outsideDaysVisible: false,
                     ),
 
                     selectedDayPredicate: (day) =>
