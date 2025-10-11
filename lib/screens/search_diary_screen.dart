@@ -101,7 +101,7 @@ class _SearchDiaryScreenState extends State<SearchDiaryScreen> {
                 ? const Center(
                 child: Text('연결이 해제되어 검색을 사용할 수 없습니다.',
                     style: TextStyle(fontSize: 16, color: Colors.grey)))
-                : ValueListenableBuilder<Map<String, Map<String, String>>>(
+                : ValueListenableBuilder<Map<String, Map<String, dynamic>>>(
               valueListenable: emotionDataNotifier,
               builder: (context, diaryData, _) {
                 final filteredEntries = diaryData.entries.where((entry) {

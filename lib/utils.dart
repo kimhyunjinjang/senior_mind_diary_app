@@ -29,17 +29,17 @@ extension ColorAlphaCompat on Color {
 
 String emotionKeyFor(String uid) => 'emotionData:$uid';
 
-Future<Map<String, Map<String, String>>> readEmotionCache(String key) async {
+Future<Map<String, Map<String, dynamic>>> readEmotionCache(String key) async {
   final prefs = await SharedPreferences.getInstance();
   final s = prefs.getString(key);
   if (s == null) return {};
   final raw = json.decode(s) as Map<String, dynamic>;
-  return raw.map((k, v) => MapEntry(k, Map<String, String>.from(v)));
+  return raw.map((k, v) => MapEntry(k, Map<String, dynamic>.from(v as Map)));
 }
 
 Future<void> writeEmotionCache(
     String key,
-    Map<String, Map<String, String>> data,
+    Map<String, Map<String, dynamic>> data,
     ) async {
   final prefs = await SharedPreferences.getInstance();
   await prefs.setString(key, json.encode(data));

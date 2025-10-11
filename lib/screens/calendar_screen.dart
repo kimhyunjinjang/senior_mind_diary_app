@@ -219,7 +219,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   // ---------- 감정 통계용(기존 로직 유지) ----------
-  String getMostFrequentEmotion(Map<String, Map<String, String>> data) {
+  String getMostFrequentEmotion(Map<String, Map<String, dynamic>> data) {
     final count = <String, int>{'기분 좋음': 0, '보통': 0, '기분 안 좋음': 0};
     for (final v in data.values) {
       final e = v['emotion'] ?? '보통';
@@ -265,55 +265,78 @@ class _CalendarScreenState extends State<CalendarScreen> {
           onSelected: (v) async {
             if (v == '검색') {
               if (!mounted) return;
-              Navigator.push(context, MaterialPageRoute(builder: (_) => const SearchDiaryScreen()));
+              Navigator.push(context,
+                  MaterialPageRoute(builder: (_) => const SearchDiaryScreen()));
             } else if (v == '통계') {
               if (!mounted) return;
-              Navigator.push(context, MaterialPageRoute(builder: (_) => const EmotionStatsScreen()));
+              Navigator.push(context, MaterialPageRoute(
+                  builder: (_) => const EmotionStatsScreen()));
             } else if (v == '공유 등록') {
               if (!mounted) return;
-              Navigator.push(context, MaterialPageRoute(builder: (_) => const MyInviteCodeScreen()));
+              Navigator.push(context, MaterialPageRoute(
+                  builder: (_) => const MyInviteCodeScreen()));
             } else if (v == '코드 입력') {
-              Navigator.push(context, MaterialPageRoute(builder: (_) => const InviteCodeInputScreen()));
+              Navigator.push(context, MaterialPageRoute(
+                  builder: (_) => const InviteCodeInputScreen()));
             } else if (v == '공유 끊기') {
               final ok = await showDialog<bool>(
                 context: context,
-                builder: (_) => AlertDialog(
-                  title: const Text('공유 끊기'),
-                  content: const Text('정말 공유를 끊으시겠어요?'),
-                  actions: [
-                    TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('취소')),
-                    TextButton(onPressed: () => Navigator.pop(context, true),  child: const Text('끊기')),
-                  ],
-                ),
+                builder: (_) =>
+                    AlertDialog(
+                      title: const Text('공유 끊기'),
+                      content: const Text('정말 공유를 끊으시겠어요?'),
+                      actions: [
+                        TextButton(onPressed: () =>
+                            Navigator.pop(context, false), child: const Text(
+                            '취소')),
+                        TextButton(onPressed: () =>
+                            Navigator.pop(context, true), child: const Text(
+                            '끊기')),
+                      ],
+                    ),
               );
               if (ok == true) await _unlinkGuardianAsSenior();
             } else if (v == '로그아웃') {
               final ok = await showDialog<bool>(
                 context: context,
-                builder: (_) => AlertDialog(
-                  title: const Text('로그아웃'),
-                  content: const Text('정말 로그아웃 하시겠습니까?'),
-                  actions: [
-                    TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('취소')),
-                    TextButton(onPressed: () => Navigator.pop(context, true),  child: const Text('로그아웃')),
-                  ],
-                ),
+                builder: (_) =>
+                    AlertDialog(
+                      title: const Text('로그아웃'),
+                      content: const Text('정말 로그아웃 하시겠습니까?'),
+                      actions: [
+                        TextButton(onPressed: () =>
+                            Navigator.pop(context, false), child: const Text(
+                            '취소')),
+                        TextButton(onPressed: () =>
+                            Navigator.pop(context, true), child: const Text(
+                            '로그아웃')),
+                      ],
+                    ),
               );
               if (ok == true) await _signOut();
             } else if (v == '계정 삭제') {
               if (!mounted) return;
-              Navigator.push(context, MaterialPageRoute(builder: (_) => const DeleteAccountScreen()));
+              Navigator.push(context, MaterialPageRoute(
+                  builder: (_) => const DeleteAccountScreen()));
             }
           },
           itemBuilder: (context) {
             final items = <PopupMenuEntry<String>>[
               PopupMenuItem(
                 value: '검색',
-                child: Row(children: const [Icon(Icons.search), SizedBox(width: 10), Text('검색')]),
+                child: Row(children: const [
+                  Icon(Icons.search),
+                  SizedBox(width: 10),
+                  Text('검색')
+                ]),
               ),
               PopupMenuItem(
                 value: '통계',
-                child: Row(children: const [Icon(Icons.bar_chart), SizedBox(width: 10), Text('통계')]),
+                child: Row(children: const [
+                  Icon(Icons.bar_chart),
+                  SizedBox(width: 10),
+                  Text('통계')
+                ]),
               ),
             ];
             // ✅ 시니어 & 아직 공유 안 됨 → "공유 등록" 노출
@@ -321,7 +344,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
               items.add(const PopupMenuDivider());
               items.add(PopupMenuItem(
                 value: '공유 등록',
-                child: Row(children: const [Icon(Icons.person_add_alt_1), SizedBox(width: 10), Text('공유 등록')]),
+                child: Row(children: const [
+                  Icon(Icons.person_add_alt_1),
+                  SizedBox(width: 10),
+                  Text('공유 등록')
+                ]),
               ));
             }
             // ✅ 보호자 & 아직 연결 안 됨 → "코드 입력"
@@ -329,7 +356,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
               items.add(const PopupMenuDivider());
               items.add(PopupMenuItem(
                 value: '코드 입력',
-                child: Row(children: const [Icon(Icons.key), SizedBox(width: 10), Text('코드 입력')]),
+                child: Row(children: const [
+                  Icon(Icons.key),
+                  SizedBox(width: 10),
+                  Text('코드 입력')
+                ]),
               ));
             }
             // 시니어 & 공유 중일 때만 "공유 끊기"
@@ -337,13 +368,21 @@ class _CalendarScreenState extends State<CalendarScreen> {
               items.add(const PopupMenuDivider());
               items.add(PopupMenuItem(
                 value: '공유 끊기',
-                child: Row(children: const [Icon(Icons.link_off), SizedBox(width: 10), Text('공유 끊기')]),
+                child: Row(children: const [
+                  Icon(Icons.link_off),
+                  SizedBox(width: 10),
+                  Text('공유 끊기')
+                ]),
               ));
             }
             items.add(const PopupMenuDivider());
             items.add(PopupMenuItem(
               value: '로그아웃',
-              child: Row(children: const [Icon(Icons.logout), SizedBox(width: 10), Text('로그아웃')]),
+              child: Row(children: const [
+                Icon(Icons.logout),
+                SizedBox(width: 10),
+                Text('로그아웃')
+              ]),
             ));
             items.add(const PopupMenuDivider());
             items.add(PopupMenuItem(
@@ -360,11 +399,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
             margin: const EdgeInsets.only(right: 16),
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             decoration: BoxDecoration(
-              color: Colors.grey.shade200, borderRadius: BorderRadius.circular(8),
+              color: Colors.grey.shade200,
+              borderRadius: BorderRadius.circular(8),
             ),
             child: Row(mainAxisSize: MainAxisSize.min, children: const [
               Icon(Icons.menu, color: Colors.black), SizedBox(width: 8),
-              Text('메뉴', style: TextStyle(fontSize: 18, color: Colors.black, fontWeight: FontWeight.w600)),
+              Text('메뉴', style: TextStyle(fontSize: 18,
+                  color: Colors.black,
+                  fontWeight: FontWeight.w600)),
             ]),
           ),
         ),
@@ -372,14 +414,17 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
 
     if (_resolving) {
-      return Scaffold(appBar: appBar, body: const Center(child: CircularProgressIndicator()));
+      return Scaffold(appBar: appBar,
+          body: const Center(child: CircularProgressIndicator()));
     }
     if (_error != null) {
       return Scaffold(appBar: appBar, body: Center(child: Text('오류: $_error')));
     }
     if (_ownerUid == null || _ownerUid!.isEmpty) {
       // 보호자인데 아직 연결 안 되어 있을 때(원웨이 정책상 여기서 온보딩으로 돌려보내지 않음)
-      return Scaffold(appBar: appBar, body: const Center(child: Text('연결된 시니어가 없습니다.\n[메뉴]에 [코드 입력]을 해주세요.')));
+      return Scaffold(appBar: appBar,
+          body: const Center(
+              child: Text('연결된 시니어가 없습니다.\n[메뉴]에 [코드 입력]을 해주세요.')));
     }
 
     // ownerUid 확정 → 해당 diaries 스트림 구독
@@ -394,209 +439,366 @@ class _CalendarScreenState extends State<CalendarScreen> {
       resizeToAvoidBottomInset: false, // 키보드 올라와도 달력 줄어들지 않음 (기존 유지)
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
         stream: diaryStream,
-          builder: (context, snapshot) {
-            if (snapshot.hasError) {
-              return Center(child: Text('데이터를 불러오는 중 오류가 발생했습니다.\n${snapshot.error}'));
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return Center(
+                child: Text('데이터를 불러오는 중 오류가 발생했습니다.\n${snapshot.error}'));
+          }
+          if (snapshot.hasData) {
+            final newData = <String, Map<String, dynamic>>{};
+            for (final d in snapshot.data!.docs) {
+              final m = d.data();
+              newData[d.id] = {
+                'emotion': m['emotion'] ?? '',
+                'diary': m['note'] ?? '',
+                'imageUrls': m['imageUrls'] ?? [],
+              };
             }
-            if (snapshot.hasData) {
-              final newData = <String, Map<String, String>>{};
-              for (final d in snapshot.data!.docs) {
-                final m = d.data();
-                newData[d.id] = {
-                  'emotion': m['emotion'] ?? '',
-                  'diary': m['note'] ?? '',
-                };
-              }
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (mounted) emotionDataNotifier.value = newData;
-              });
-            }
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) emotionDataNotifier.value = newData;
+            });
+          }
 
-            // --- 달력 헤더(예전 느낌: 월 표기 + 좌우 이동) ---
-            final monthHeader = Padding(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-              child: Row(
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.chevron_left),
-                    onPressed: _goPrevMonth,
-                    visualDensity: VisualDensity.compact,
-                  ),
-                  Expanded(
-                    child: Center(
-                      child: Text(
-                        _monthTitle(_focusedDay),
-                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-                      ),
+          // --- 달력 헤더(예전 느낌: 월 표기 + 좌우 이동) ---
+          final monthHeader = Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+            child: Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.chevron_left),
+                  onPressed: _goPrevMonth,
+                  visualDensity: VisualDensity.compact,
+                ),
+                Expanded(
+                  child: Center(
+                    child: Text(
+                      _monthTitle(_focusedDay),
+                      style: const TextStyle(
+                          fontSize: 18, fontWeight: FontWeight.w600),
                     ),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.chevron_right),
-                    onPressed: _goNextMonth,
-                    visualDensity: VisualDensity.compact,
-                  ),
-                ],
-              ),
-            );
+                ),
+                IconButton(
+                  icon: const Icon(Icons.chevron_right),
+                  onPressed: _goNextMonth,
+                  visualDensity: VisualDensity.compact,
+                ),
+              ],
+            ),
+          );
 
-            // --- 달력 자체(총 높이: 요일줄 + 6행) ---
-            final dpr = MediaQuery
-                .of(context)
-                .devicePixelRatio;
-            double snapDown(double v) => (v * dpr).floor() / dpr;
-            final double epsilon = 1 / dpr;
+          // --- 달력 자체(총 높이: 요일줄 + 6행) ---
+          final dpr = MediaQuery
+              .of(context)
+              .devicePixelRatio;
+          double snapDown(double v) => (v * dpr).floor() / dpr;
+          final double epsilon = 1 / dpr;
 
-            const double rowH = 60.0;
-            const double dowH = 32.0;
+          const double rowH = 60.0;
+          const double dowH = 32.0;
 
-            final double calendarTotal = snapDown(dowH + rowH * 6);
+          final double calendarTotal = snapDown(dowH + rowH * 6);
 
-            /*final media = MediaQuery.of(context);
+          /*final media = MediaQuery.of(context);
             final clamped = media.copyWith(
               textScaler: media.textScaler.clamp(
                   minScaleFactor: 0.9, maxScaleFactor: 1.0),
             );*/
 
 // 실제 달력 위젯
-            final calendar = ClipRect(
-                child: SizedBox(
-                  height: calendarTotal,
-                  child: TableCalendar(
-                    locale: 'ko_KR',
-                    firstDay: DateTime.utc(2020, 1, 1),
-                    lastDay: DateTime.utc(2030, 12, 31),
-                    focusedDay: _focusedDay,
+          final calendar = ClipRect(
+            child: SizedBox(
+              height: calendarTotal,
+              child: TableCalendar(
+                locale: 'ko_KR',
+                firstDay: DateTime.utc(2020, 1, 1),
+                lastDay: DateTime.utc(2030, 12, 31),
+                focusedDay: _focusedDay,
 
-                    headerVisible: false,
-                    sixWeekMonthsEnforced: true,
-                    calendarFormat: CalendarFormat.month,
-                    availableCalendarFormats: const { CalendarFormat.month: 'Month' },
+                headerVisible: false,
+                sixWeekMonthsEnforced: true,
+                calendarFormat: CalendarFormat.month,
+                availableCalendarFormats: const {
+                  CalendarFormat.month: 'Month'
+                },
 
-                    rowHeight: rowH,
-                    daysOfWeekHeight: dowH,
+                rowHeight: rowH,
+                daysOfWeekHeight: dowH,
 
-                    daysOfWeekStyle: const DaysOfWeekStyle(
-                      weekdayStyle: TextStyle(fontSize: 14),
-                      weekendStyle: TextStyle(fontSize: 14),
-                    ),
-
-                    calendarStyle: const CalendarStyle(
-                      disabledTextStyle: TextStyle(color: Colors.grey),
-                      cellPadding: EdgeInsets.zero,
-                      cellMargin: EdgeInsets.zero,
-                      tablePadding: EdgeInsets.zero,
-                      outsideDaysVisible: false,
-                    ),
-
-                    selectedDayPredicate: (day) =>
-                    _selectedDay != null && isSameDay(_selectedDay, day),
-                    enabledDayPredicate: (day) => _isSameOrBeforeToday(day),
-
-                    onDaySelected: (selectedDay, focusedDay) async {
-                      if (_myRole == 'guardian' && !_linked) {
-                        setState(() { _selectedDay = selectedDay; _focusedDay = focusedDay; });
-                        return;
-                      }
-                      if (!_isSameOrBeforeToday(selectedDay)) return;
-
-                      setState(() { _selectedDay = selectedDay; _focusedDay = focusedDay; });
-                      if (_myRole == 'guardian' && _linked) return;
-
-                      await Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => EmotionInputScreen(selectedDay: selectedDay)),
-                      );
-                      if (!mounted) return;
-                      setState(() {
-                        _focusedDay = selectedDay;
-                        _viewingEmotion = null;
-                        _viewingDiary = null;
-                      });
-                    },
-                    onPageChanged: (fd) => setState(() => _focusedDay = fd),
-
-                    calendarBuilders: CalendarBuilders(
-                      defaultBuilder: (context, day, focusedDay) =>
-                          _buildCalendarCell(context, day, focusedDay, rowH),
-                      todayBuilder: (context, day, focusedDay) =>
-                          _buildCalendarCell(context, day, focusedDay, rowH, today: true),
-                      selectedBuilder: (context, day, focusedDay) =>
-                          _buildCalendarCell(context, day, focusedDay, rowH, selected: true),
-                    ),
-                  ),
+                daysOfWeekStyle: const DaysOfWeekStyle(
+                  weekdayStyle: TextStyle(fontSize: 14),
+                  weekendStyle: TextStyle(fontSize: 14),
                 ),
-            );
 
-            // --- 다이어리 패널 표시 여부 ---
-            final bool showDiary = (_myRole == 'guardian' && _linked);
+                calendarStyle: const CalendarStyle(
+                  disabledTextStyle: TextStyle(color: Colors.grey),
+                  cellPadding: EdgeInsets.zero,
+                  cellMargin: EdgeInsets.zero,
+                  tablePadding: EdgeInsets.zero,
+                  outsideDaysVisible: false,
+                ),
 
-            // --- 다이어리 패널 ---
-            final diaryPanel = Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-                child: SingleChildScrollView(
-                  child: Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF4F0FA),
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 3))],
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                selectedDayPredicate: (day) =>
+                _selectedDay != null && isSameDay(_selectedDay, day),
+                enabledDayPredicate: (day) => _isSameOrBeforeToday(day),
+
+                onDaySelected: (selectedDay, focusedDay) async {
+                  if (_myRole == 'guardian' && !_linked) {
+                    setState(() {
+                      _selectedDay = selectedDay;
+                      _focusedDay = focusedDay;
+                    });
+                    return;
+                  }
+                  if (!_isSameOrBeforeToday(selectedDay)) return;
+
+                  setState(() {
+                    _selectedDay = selectedDay;
+                    _focusedDay = focusedDay;
+                  });
+                  if (_myRole == 'guardian' && _linked) return;
+
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) =>
+                        EmotionInputScreen(selectedDay: selectedDay)),
+                  );
+                  if (!mounted) return;
+                  setState(() {
+                    _focusedDay = selectedDay;
+                    _viewingEmotion = null;
+                    _viewingDiary = null;
+                  });
+                },
+                onPageChanged: (fd) => setState(() => _focusedDay = fd),
+
+                calendarBuilders: CalendarBuilders(
+                  defaultBuilder: (context, day, focusedDay) =>
+                      _buildCalendarCell(context, day, focusedDay, rowH),
+                  todayBuilder: (context, day, focusedDay) =>
+                      _buildCalendarCell(
+                          context, day, focusedDay, rowH, today: true),
+                  selectedBuilder: (context, day, focusedDay) =>
+                      _buildCalendarCell(
+                          context, day, focusedDay, rowH, selected: true),
+                ),
+              ),
+            ),
+          );
+
+          // --- 다이어리 패널 표시 여부 ---
+          final bool showDiary = (_myRole == 'guardian' && _linked);
+
+          // --- 다이어리 패널 ---
+          final diaryPanel = Padding(
+            padding: const EdgeInsets.symmetric(
+                horizontal: 16.0, vertical: 12.0),
+            child: SingleChildScrollView(
+              child: Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF4F0FA),
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: const [
+                    BoxShadow(color: Colors.black12,
+                        blurRadius: 6,
+                        offset: Offset(0, 3))
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: <Widget>[
                         Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: <Widget>[
-                            Row(
-                              children: const <Widget>[
-                                Icon(Icons.calendar_today, size: 20),
-                                SizedBox(width: 8),
-                              ],
-                            ),
-                            Text(
-                              getEmotionEmoji(
-                                (_selectedDay != null
-                                    ? (emotionDataNotifier.value[formatDate(_selectedDay!)]?['emotion'])
-                                    : null) ?? '',
-                              ),
-                              style: const TextStyle(fontSize: 20),
-                            ),
+                          children: const <Widget>[
+                            Icon(Icons.calendar_today, size: 20),
+                            SizedBox(width: 8),
                           ],
                         ),
-                        const SizedBox(height: 12),
                         Text(
-                          _selectedDay != null ? formatDate(_selectedDay!) : '',
-                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                          getEmotionEmoji(
+                            (_selectedDay != null
+                                ? (emotionDataNotifier.value[formatDate(
+                                _selectedDay!)]?['emotion'])
+                                : null) ?? '',
+                          ),
+                          style: const TextStyle(fontSize: 20),
                         ),
-                        const SizedBox(height: 16),
-                        Text(
-                          (() {
-                            if (_selectedDay == null) return '작성된 일기가 없습니다.';
-                            final d = emotionDataNotifier.value[formatDate(_selectedDay!)]?['diary'] ?? '';
-                            return d.isNotEmpty ? d : '작성된 일기가 없습니다.';
-                          })(),
-                          style: const TextStyle(fontSize: 16, height: 1.6),
-                          textAlign: TextAlign.start,
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      _selectedDay != null ? formatDate(_selectedDay!) : '',
+                      style: const TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      (() {
+                        if (_selectedDay == null) return '작성된 일기가 없습니다.';
+                        final d = emotionDataNotifier.value[formatDate(
+                            _selectedDay!)]?['diary'] ?? '';
+                        return d.isNotEmpty ? d : '작성된 일기가 없습니다.';
+                      })(),
+                      style: const TextStyle(fontSize: 16, height: 1.6),
+                      textAlign: TextAlign.start,
+                    ),
+
+                    // ✅ 이미지 표시 - 완전한 버전!
+                    if (_selectedDay != null)
+                      Builder(
+                        builder: (context) {
+                          final dateStr = formatDate(_selectedDay!);
+                          final diaryData = emotionDataNotifier.value[dateStr];
+
+                          if (diaryData == null) return const SizedBox.shrink();
+
+                          final imageUrls = diaryData['imageUrls'];
+
+                          // 디버그 로그
+                          debugPrint(
+                              '🖼️ 보호자 모드 - 날짜: $dateStr, 이미지 데이터: $imageUrls');
+
+                          if (imageUrls == null ||
+                              (imageUrls is List && imageUrls.isEmpty)) {
+                            return const SizedBox.shrink();
+                          }
+
+                          final urls = (imageUrls is List)
+                              ? imageUrls.cast<String>()
+                              : <String>[];
+
+                          if (urls.isEmpty) return const SizedBox.shrink();
+
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const SizedBox(height: 16),
+                              const Divider(),
+                              const SizedBox(height: 12),
+                              const Text(
+                                '📷 첨부된 사진',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.black87,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: urls.map((url) {
+                                  return ClipRRect(
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: GestureDetector(
+                                      onTap: () {
+                                        // 전체화면으로 보기
+                                        showDialog(
+                                          context: context,
+                                          builder: (context) =>
+                                              Dialog(
+                                                child: Column(
+                                                  mainAxisSize: MainAxisSize
+                                                      .min,
+                                                  children: [
+                                                    Image.network(url),
+                                                    TextButton(
+                                                      onPressed: () =>
+                                                          Navigator.pop(
+                                                              context),
+                                                      child: const Text('닫기'),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                        );
+                                      },
+                                      child: Image.network(
+                                        url,
+                                        width: 100,
+                                        height: 100,
+                                        fit: BoxFit.cover,
+                                        loadingBuilder: (context, child,
+                                            loadingProgress) {
+                                          if (loadingProgress == null)
+                                            return child;
+                                          return Container(
+                                            width: 100,
+                                            height: 100,
+                                            color: Colors.grey.shade200,
+                                            child: Center(
+                                              child: CircularProgressIndicator(
+                                                value: loadingProgress
+                                                    .expectedTotalBytes != null
+                                                    ? loadingProgress
+                                                    .cumulativeBytesLoaded /
+                                                    loadingProgress
+                                                        .expectedTotalBytes!
+                                                    : null,
+                                              ),
+                                            ),
+                                          );
+                                        },
+                                        errorBuilder: (context, error,
+                                            stackTrace) {
+                                          debugPrint(
+                                              '🔴 이미지 로드 실패: $url, 에러: $error');
+                                          return Container(
+                                            width: 100,
+                                            height: 100,
+                                            color: Colors.grey.shade300,
+                                            child: const Column(
+                                              mainAxisAlignment: MainAxisAlignment
+                                                  .center,
+                                              children: [
+                                                Icon(Icons.broken_image,
+                                                    color: Colors.grey),
+                                                SizedBox(height: 4),
+                                                Text(
+                                                  '로드 실패',
+                                                  style: TextStyle(fontSize: 10,
+                                                      color: Colors.grey),
+                                                ),
+                                              ],
+                                            ),
+                                          );
+                                        },
+                                      ),
+                                    ),
+                                  );
+                                }).toList(),
                               ),
                             ],
-                          ),
-                        ),
+                          );
+                        },
                       ),
-                    );
-
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      monthHeader,
-                      calendar,
-                      if (showDiary) Expanded(child: diaryPanel),
-                    ],
-                  );
-                },
+                  ], // ← children 닫는 괄호
+                ),
               ),
-            );
-          }
+            ),
+          );
 
+          return Column(
+            children: [
+              monthHeader,
+              Expanded(
+                child: Column(
+                  children: [
+                    calendar,
+                    if (showDiary && _selectedDay != null)
+                      Expanded(child: diaryPanel),
+                  ],
+                ),
+              ),
+            ],
+          );
+        }, // ← StreamBuilder builder 닫힘
+      ),
+    );
+  }
   Widget _buildCalendarCell(
       BuildContext context,
       DateTime day,
