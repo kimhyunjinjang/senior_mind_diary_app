@@ -245,7 +245,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
   @override
   Widget build(BuildContext context) {
     final appBar = AppBar(
-      title: const Text('달력'),
       actions: [
         // 링크 상태 뱃지
         Padding(
@@ -256,7 +255,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   color: _linked ? Colors.green : Colors.grey, size: 20),
               const SizedBox(width: 4),
               Text(_linked ? '공유 중' : '공유 안 됨',
-                  style: const TextStyle(fontSize: 14, color: Colors.black87)),
+                  style: const TextStyle(fontSize: 16, color: Colors.black87)),
             ],
           ),
         ),
@@ -404,7 +403,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
             ),
             child: Row(mainAxisSize: MainAxisSize.min, children: const [
               Icon(Icons.menu, color: Colors.black), SizedBox(width: 8),
-              Text('메뉴', style: TextStyle(fontSize: 18,
+              Text('메뉴', style: TextStyle(fontSize: 20,
                   color: Colors.black,
                   fontWeight: FontWeight.w600)),
             ]),
@@ -474,7 +473,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     child: Text(
                       _monthTitle(_focusedDay),
                       style: const TextStyle(
-                          fontSize: 18, fontWeight: FontWeight.w600),
+                          fontSize: 22, fontWeight: FontWeight.w600),
                     ),
                   ),
                 ),
@@ -514,25 +513,20 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 firstDay: DateTime.utc(2020, 1, 1),
                 lastDay: DateTime.utc(2030, 12, 31),
                 focusedDay: _focusedDay,
-
                 headerVisible: false,
                 sixWeekMonthsEnforced: true,
                 calendarFormat: CalendarFormat.month,
-                availableCalendarFormats: const {
-                  CalendarFormat.month: 'Month'
-                },
-
+                availableCalendarFormats: const {CalendarFormat.month: 'Month'},
                 rowHeight: rowH,
                 daysOfWeekHeight: dowH,
 
                 daysOfWeekStyle: const DaysOfWeekStyle(
-                  weekdayStyle: TextStyle(fontSize: 14),
-                  weekendStyle: TextStyle(fontSize: 14),
+                  weekdayStyle: TextStyle(fontSize: 16),
+                  weekendStyle: TextStyle(fontSize: 16),
                 ),
 
                 calendarStyle: const CalendarStyle(
                   disabledTextStyle: TextStyle(color: Colors.grey),
-                  cellPadding: EdgeInsets.zero,
                   cellMargin: EdgeInsets.zero,
                   tablePadding: EdgeInsets.zero,
                   outsideDaysVisible: false,
@@ -591,11 +585,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
           // --- 다이어리 패널 ---
           final diaryPanel = Padding(
-            padding: const EdgeInsets.symmetric(
-                horizontal: 16.0, vertical: 12.0),
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
             child: SingleChildScrollView(
+              padding: const EdgeInsets.only(bottom: 80.0),
               child: Container(
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
                 decoration: BoxDecoration(
                   color: const Color(0xFFF4F0FA),
                   borderRadius: BorderRadius.circular(12),
@@ -642,7 +636,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                             _selectedDay!)]?['diary'] ?? '';
                         return d.isNotEmpty ? d : '작성된 일기가 없습니다.';
                       })(),
-                      style: const TextStyle(fontSize: 16, height: 1.6),
+                      style: const TextStyle(fontSize: 18, height: 1.8),
                       textAlign: TextAlign.start,
                     ),
 
@@ -656,10 +650,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
                           if (diaryData == null) return const SizedBox.shrink();
 
                           final imageUrls = diaryData['imageUrls'];
-
-                          // 디버그 로그
-                          debugPrint(
-                              '🖼️ 보호자 모드 - 날짜: $dateStr, 이미지 데이터: $imageUrls');
 
                           if (imageUrls == null ||
                               (imageUrls is List && imageUrls.isEmpty)) {
@@ -698,17 +688,19 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                         // 전체화면으로 보기
                                         showDialog(
                                           context: context,
-                                          builder: (context) =>
-                                              Dialog(
+                                          builder: (context) => Dialog(
+                                            shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
                                                 child: Column(
-                                                  mainAxisSize: MainAxisSize
-                                                      .min,
+                                                  mainAxisSize: MainAxisSize.min,
                                                   children: [
                                                     Image.network(url),
                                                     TextButton(
-                                                      onPressed: () =>
-                                                          Navigator.pop(
-                                                              context),
+                                                      onPressed: () => Navigator.pop(context),
+                                                      style: const ButtonStyle(
+                                                        shape: WidgetStatePropertyAll(
+                                                          RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                                                        ),
+                                                      ),
                                                       child: const Text('닫기'),
                                                     ),
                                                   ],
@@ -782,15 +774,17 @@ class _CalendarScreenState extends State<CalendarScreen> {
           );
 
           return Column(
+            mainAxisSize: MainAxisSize.max,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               monthHeader,
+              const SizedBox(height: 0),
+              calendar,
+              if (showDiary && _selectedDay != null)
               Expanded(
-                child: Column(
-                  children: [
-                    calendar,
-                    if (showDiary && _selectedDay != null)
-                      Expanded(child: diaryPanel),
-                  ],
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 8.0),
+                  child: diaryPanel,
                 ),
               ),
             ],
@@ -822,8 +816,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
     double shrink = (rowHeight  - 1.0) / baseRow;
 
     // 2) 폰트/패딩 베이스 (예전 코드와 호환)
-    const double baseDayFs   = 14.0;
-    const double baseEmojiFs = 18.0;
+    const double baseDayFs   = 16.0;
+    const double baseEmojiFs = 20.0;
     const double basePad     = 8.0;  // 선택 칩 내부 패딩
     const double baseGap     = 1.0;  // 칩-이모지 간격
     const double textHFactor = 1.1;  // 텍스트 실제 높이 보정치

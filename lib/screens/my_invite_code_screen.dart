@@ -78,7 +78,7 @@ class _MyInviteCodeScreenState extends State<MyInviteCodeScreen> {
       onWillPop: () async => false,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('보호자 초대'),
+          title: const Text('공유 등록'),
           automaticallyImplyLeading: false,
         ),
         body: Padding(
@@ -86,32 +86,48 @@ class _MyInviteCodeScreenState extends State<MyInviteCodeScreen> {
           child: _loading
               ? const Center(child: CircularProgressIndicator())
               : Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisAlignment: MainAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text('아래 6자리 코드를 보호자에게 전달하세요', style: TextStyle(fontSize: 16)),
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade100,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.grey.shade300),
-                ),
-                child: SelectableText(
-                  _code.isEmpty ? '생성 실패' : _code,
-                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, letterSpacing: 2),
-                  textAlign: TextAlign.center,
-                ),
+              const Text('아래 6자리 코드를 보호자에게 전달하세요', style: TextStyle(fontSize: 18)),
+              const SizedBox(height: 40),
+              Row(
+                children: [
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.grey.shade300),
+                      ),
+                      child: SelectableText(
+                        _code.isEmpty ? '생성 실패' : _code,
+                        style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, letterSpacing: 2),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  ElevatedButton(
+                    onPressed: _code.isEmpty ? null : () async {
+                      await Clipboard.setData(ClipboardData(text: _code));
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('코드가 복사되었습니다.')));
+                    },
+                    style: ElevatedButton.styleFrom(
+                      shape: const RoundedRectangleBorder(
+                        borderRadius: BorderRadius.zero, // ✅ 직사각형!
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 16),
+                    ),
+                    child: const Text('복사'),
+                  ),
+                ],
               ),
-              const SizedBox(height: 12),
-              ElevatedButton(
-                onPressed: _code.isEmpty ? null : () async {
-                  await Clipboard.setData(ClipboardData(text: _code));
-                  if (!mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('코드가 복사되었습니다.')));
-                },
-                child: const Text('코드 복사'),
-              ),
+
               const SizedBox(height: 24),
               SizedBox(
                 width: double.infinity,

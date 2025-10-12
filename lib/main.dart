@@ -288,7 +288,7 @@ class InviteCodeGenerateScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text("보호자 초대")),
+      appBar: AppBar(title: Text("공유 등록")),
       body: Center(
         child: ElevatedButton(
           onPressed: () async {
@@ -454,6 +454,47 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'Senior Mind Diary',
       theme: ThemeData(
+        primarySwatch: Colors.blue,
+        // ✅ 전역 텍스트 테마 추가
+        textTheme: const TextTheme(
+          // 기본 body 텍스트
+          bodyLarge: TextStyle(fontSize: 20, height: 1.6),
+          bodyMedium: TextStyle(fontSize: 18, height: 1.6),
+          bodySmall: TextStyle(fontSize: 16, height: 1.5),
+
+          // 제목 텍스트
+          titleLarge: TextStyle(fontSize: 26, height: 1.5, fontWeight: FontWeight.bold),
+          titleMedium: TextStyle(fontSize: 22, height: 1.5, fontWeight: FontWeight.w600),
+          titleSmall: TextStyle(fontSize: 20, height: 1.5, fontWeight: FontWeight.w600),
+
+          // 라벨 텍스트
+          labelLarge: TextStyle(fontSize: 18, height: 1.5),
+          labelMedium: TextStyle(fontSize: 16, height: 1.5),
+          labelSmall: TextStyle(fontSize: 14, height: 1.4),
+        ),
+
+        // ✅ 버튼 텍스트 크기
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            textStyle: const TextStyle(fontSize: 20, height: 1.5),
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+          ),
+        ),
+
+        textButtonTheme: TextButtonThemeData(
+          style: TextButton.styleFrom(
+            textStyle: const TextStyle(fontSize: 18, height: 1.5),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          ),
+        ),
+
+        // ✅ 입력 필드 텍스트 크기
+        inputDecorationTheme: const InputDecorationTheme(
+          labelStyle: TextStyle(fontSize: 18, height: 1.5),
+          hintStyle: TextStyle(fontSize: 18, height: 1.5),
+          contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        ),
+
         // This is the theme of your application.
         //
         // TRY THIS: Try running your application with "flutter run". You'll see

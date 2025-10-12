@@ -22,6 +22,10 @@ class _AccountRegisterScreenState extends State<AccountRegisterScreen> {
   bool _isLogin = false; // false=회원가입, true=로그인
   bool _busy = false;
   bool _showPassword = false;
+  final _emailReg = RegExp(r'^[^@]+@[^@]+\.[^@]+$');
+
+  static const TextStyle _guideOk  = TextStyle(fontSize: 16, height: 1.4, color: Colors.green);
+  static const TextStyle _guideErr = TextStyle(fontSize: 16, height: 1.4, color: Colors.red);
 
   @override
   void dispose() {
@@ -199,6 +203,7 @@ class _AccountRegisterScreenState extends State<AccountRegisterScreen> {
     return TextField(
       controller: controller,
       obscureText: !_showPassword, // ✅ 보이기/숨기기
+      onChanged: (_) => setState(() {}),
       decoration: InputDecoration(
         labelText: label,
         helperText: helperText,
@@ -225,6 +230,10 @@ class _AccountRegisterScreenState extends State<AccountRegisterScreen> {
     final showMatchHint = !_isLogin && pw.isNotEmpty && pw2.isNotEmpty;
     final isMatch = pw == pw2;
 
+    final email = _emailCtrl.text;
+    final showEmailHint = !_isLogin && email.isNotEmpty;
+    final isEmailValid = _emailReg.hasMatch(email);
+
     return Scaffold(
       resizeToAvoidBottomInset: true,
 
@@ -234,19 +243,51 @@ class _AccountRegisterScreenState extends State<AccountRegisterScreen> {
           16,
           16,
           16,
-          16 + MediaQuery.of(context).viewInsets.bottom,
+          24
+              + MediaQuery.of(context).padding.bottom
+              + MediaQuery.of(context).viewInsets.bottom,
         ),
         children: [
+          if (!_isLogin)
+            Container(
+              padding: const EdgeInsets.all(12),
+              margin: const EdgeInsets.only(bottom: 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE8F1FF),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFB7D3FF)),
+              ),
+              child: const Text(
+                'ℹ️ 안내\n이메일은 지금 사용 중인 이메일 주소(네이버, 다음, Gmail 등) 입니다. 비밀번호는 “이 앱에서 새로 만드는 비밀번호”입니다. ',
+                style: TextStyle(fontSize: 18, height: 1.6),
+              ),
+            ),
           TextField(
             controller: _emailCtrl,
             keyboardType: TextInputType.emailAddress,
-            decoration: const InputDecoration(labelText: '이메일'),
+            onChanged: (_) => setState(() {}), // 타이핑마다 갱신
+            decoration: InputDecoration(
+                labelText: '이메일',
+              suffixIcon: (!_isLogin && email.isNotEmpty)
+                  ? Icon(
+                isEmailValid ? Icons.check_circle : Icons.error_outline,
+                color: isEmailValid ? Colors.green : Colors.red,
+              )
+                  : null,
+            ),
             onSubmitted: (_) {
-              if (_isLogin) {
+              if (_isLogin && !_busy) {
                 _onSubmit();
               }
             },
           ),
+          const SizedBox(height: 8),
+
+          if (showEmailHint)
+            Text(
+              isEmailValid ? '올바른 이메일 형식입니다.' : '이메일 형식이 올바르지 않습니다.',
+              style: isEmailValid ? _guideOk : _guideErr,
+            ),
           const SizedBox(height: 12),
 
           // ✅ 비밀번호
@@ -256,22 +297,19 @@ class _AccountRegisterScreenState extends State<AccountRegisterScreen> {
             onSubmitted: _isLogin ? _onSubmit : null,
             helperText: _isLogin ? null : '비밀번호는 6자 이상이어야 합니다.',
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
 
           // ✅ 회원가입일 때만 비밀번호 확인 표시
           if (!_isLogin) ...[
             _buildPasswordField(controller: _pwConfirmCtrl, label: '비밀번호 확인'),
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
             // ✅ 실시간 일치 힌트(선택 사항, 최소 변경)
             if (showMatchHint)
               Text(
                 isMatch ? '비밀번호가 일치합니다.' : '비밀번호가 일치하지 않습니다.',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: isMatch ? Colors.green : Colors.red,
-                ),
+                style: isMatch ? _guideOk : _guideErr,
               ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
           ],
 
             if (_isLogin)
@@ -321,11 +359,11 @@ class _AccountRegisterScreenState extends State<AccountRegisterScreen> {
                 ],
               ),
 
-          const SizedBox(height: 20),
+    const SizedBox(height: 20),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: _busy ? null : _onSubmit,
+              onPressed: (_busy || (!_isLogin && (!isEmailValid || !isMatch))) ? null : _onSubmit,
               child: Text(cta),
             ),
           ),

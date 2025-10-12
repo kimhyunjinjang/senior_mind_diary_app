@@ -382,7 +382,7 @@ class _EmotionInputScreenState extends State<EmotionInputScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text('오늘 기분은 어땠나요?',
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                style: TextStyle(fontSize: 24)),
             const SizedBox(height: 24),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -393,6 +393,7 @@ class _EmotionInputScreenState extends State<EmotionInputScreen> {
                   color: Colors.lightBlue.shade200,
                   onTap: () => setState(() => _selectedEmotion = '기분 좋음'),
                   selected: _selectedEmotion == '기분 좋음',
+                  labelStyle: const TextStyle(fontSize: 22, height: 1.35, fontWeight: FontWeight.w600),
                 ),
                 EmotionButton(
                   emoji: '😐',
@@ -419,12 +420,14 @@ class _EmotionInputScreenState extends State<EmotionInputScreen> {
                   onPressed: _pickFromGallery,
                   icon: const Icon(Icons.photo),
                   label: const Text('사진 추가'),
+                  style: ElevatedButton.styleFrom(foregroundColor: Colors.black),
                 ),
                 const SizedBox(width: 12),
                 OutlinedButton.icon(
                   onPressed: _pickFromCamera,
                   icon: const Icon(Icons.photo_camera),
                   label: const Text('촬영'),
+                  style: ElevatedButton.styleFrom(foregroundColor: Colors.black),
                 ),
                 const SizedBox(width: 12),
                 if (_uploading)
@@ -462,6 +465,7 @@ class _EmotionInputScreenState extends State<EmotionInputScreen> {
               ),
               child: const Text('저장하기'),
             ),
+            const SizedBox(height: 48),
           ],
         ),
       ),

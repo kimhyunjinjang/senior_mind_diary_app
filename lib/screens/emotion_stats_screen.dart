@@ -83,12 +83,17 @@ class _EmotionStatsScreenState extends State<EmotionStatsScreen> {
                   legendOptions: const LegendOptions(
                     showLegends: true,
                     legendPosition: LegendPosition.bottom,
-                    legendTextStyle: TextStyle(fontSize: 16),
+                    legendTextStyle: TextStyle(fontSize: 20),
                   ),
                   chartValuesOptions: const ChartValuesOptions(
                     showChartValuesInPercentage: true,
                     showChartValues: true,
                     decimalPlaces: 0,
+                    chartValueStyle: TextStyle(  // ✅ 이 부분 추가!
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black,
+                    ),
                   ),
                 ),
               );

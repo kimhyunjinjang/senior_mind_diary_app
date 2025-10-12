@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart';
+import 'account_register_screen.dart';
 
 class DeleteAccountScreen extends StatefulWidget {
   const DeleteAccountScreen({super.key});
@@ -52,9 +53,30 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
       await user.delete(); // 최근 로그인 안 했으면 requires-recent-login 에러
 
       if (!mounted) return;
-      _msg = '계정과 데이터가 삭제되었습니다.';
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('삭제 완료')));
-      Navigator.of(context).pop(); // 필요시 navigateReset로 초기 화면 이동
+
+      await showDialog(
+        context: context,
+        barrierDismissible: false,  // 바깥 터치로 닫기 불가
+        builder: (ctx) => AlertDialog(
+          title: const Text('삭제 완료'),
+          content: const Text('계정이 삭제되었습니다.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('확인'),
+            ),
+          ],
+        ),
+      );
+
+      if (!mounted) return;
+
+      // 완전 초기화로 교체
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const AccountRegisterScreen()),
+            (route) => false,
+      );
+
     } on FirebaseAuthException catch (e) {
       setState(() => _msg = (e.code == 'requires-recent-login')
           ? '보안을 위해 다시 로그인한 뒤 삭제를 시도하세요.'
@@ -78,12 +100,12 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
           16 + MediaQuery.of(context).viewInsets.bottom,
         ),
         children: [
-          const Text('계정을 삭제하면 다음 항목들이 영구 삭제됩니다:', style: TextStyle(fontWeight: FontWeight.bold)),
+          const Text('계정 삭제하면 다음 항목들이 영구 삭제됩니다.', style: TextStyle(fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
-          const Text('이메일 계정 / 일기 / 보호자 연결'),
+          const Text('• 이메일 계정\n• 일기\n• 보호자 연결'),
           const SizedBox(height: 16),
           const Text('비밀번호 입력 후 삭제를 진행하세요.'),
-          const SizedBox(height: 8),
+          const SizedBox(height: 20),
 
           TextField(
             controller: _pwd,
@@ -102,7 +124,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
             scrollPadding: const EdgeInsets.only(bottom: 120),
             onSubmitted: (_) => _busy ? null : _deleteAll(),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           Row(
             children: [
               Checkbox(
@@ -112,6 +134,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
               const Text('비밀번호 보이기', style: TextStyle(fontSize: 16)),
             ],
           ),
+          const SizedBox(height: 24),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
