@@ -28,7 +28,6 @@ Future<String?> resolveOwnerUid() async {
 Future<Map<String, Map<String, dynamic>>> loadEmotionDataFromFirestoreFor({
   required String ownerUid,
 }) async {
-  debugPrint('🔵 일기 데이터 로딩 시작 - ownerUid: $ownerUid');
 
   final snap = await FirebaseFirestore.instance
       .collection('users')
@@ -36,14 +35,10 @@ Future<Map<String, Map<String, dynamic>>> loadEmotionDataFromFirestoreFor({
       .collection('diaries')
       .get();
 
-  debugPrint('🔵 로딩된 일기 개수: ${snap.docs.length}');
-
   final result = <String, Map<String, dynamic>>{};
   for (final doc in snap.docs) {
     final m = doc.data();
     final imageUrls = m['imageUrls'] ?? [];
-
-    debugPrint('🔵 날짜: ${doc.id}, 이미지 개수: ${imageUrls is List ? imageUrls.length : 0}');
 
     result[doc.id] = {
       'emotion': m['emotion'] ?? '',
@@ -52,7 +47,6 @@ Future<Map<String, Map<String, dynamic>>> loadEmotionDataFromFirestoreFor({
     };
   }
 
-  debugPrint('🔵 최종 결과 키 개수: ${result.length}');
   return result;
 }
 

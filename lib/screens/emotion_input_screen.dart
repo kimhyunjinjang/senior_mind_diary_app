@@ -119,7 +119,6 @@ class _EmotionInputScreenState extends State<EmotionInputScreen> {
         final removedUrl = _existingImageUrls[index];
         _deletedUrls.add(removedUrl); // 나중에 Storage에서 삭제할 목록에 추가
         _existingImageUrls.removeAt(index); // 리스트에서 즉시 제거
-        debugPrint('이미지 제거 예약: $removedUrl');
       }
     });
   }
@@ -138,7 +137,6 @@ class _EmotionInputScreenState extends State<EmotionInputScreen> {
         final file = _pickedImages[i];
         final name = '$date-${DateTime.now().millisecondsSinceEpoch}-$i.jpg';
         final ref = _storage.ref('diary_images/$uid/$name');
-        debugPrint('UPLOAD → bucket=${_storage.bucket}, path=${ref.fullPath}');
 
         try {
           final bytes = await file.readAsBytes(); // putData로 전환(세션 꼬임 회피)
@@ -148,14 +146,9 @@ class _EmotionInputScreenState extends State<EmotionInputScreen> {
           );
           final url = await ref.getDownloadURL();
           uploaded.add(url);
-          debugPrint('UPLOAD OK → $url');
         } on FirebaseException catch (e, st) {
-          debugPrint('UPLOAD FAIL(Firebase) → code=${e.code}, msg=${e.message}');
-          debugPrint('UPLOAD FAIL ST → $st');
           rethrow;
         } catch (e, st) {
-          debugPrint('UPLOAD FAIL(Other) → $e');
-          debugPrint('UPLOAD FAIL ST → $st');
           rethrow;
         }
       }
@@ -169,17 +162,8 @@ class _EmotionInputScreenState extends State<EmotionInputScreen> {
     for (final url in _deletedUrls) {
         try {
           final ref = _storage.refFromURL(url);
-          // ★ 디버그 로그 (버킷/경로/원본 URL)
-          debugPrint('DELETE → bucket=${_storage.bucket}, path=${ref.fullPath}');
-          debugPrint('DELETE URL → $url');
-
           await ref.delete();
-
-          debugPrint('DELETE OK  → ${ref.fullPath}');
         } catch (e) {
-          // 에러도 찍어서 원인 파악
-          debugPrint('DELETE FAIL → url=$url, error=$e');
-          // 이미 삭제되었거나 접근 불가 시 무시
         }
       }
     }
@@ -198,24 +182,17 @@ class _EmotionInputScreenState extends State<EmotionInputScreen> {
     try {
       setState(() => _uploading = true);
 
-      debugPrint('🟢 1. 저장 시작 - UID: $uid');
-
       final key = emotionKeyFor(uid);
       final Map<String, Map<String, dynamic>> data = await readEmotionCache(key);
       final date = formatDate(widget.selectedDay);
 
-      debugPrint('🟢 2. 새 이미지 업로드 시작 (${_pickedImages.length}장)');
       // 1) 새 이미지 업로드
       final newUrls = await _uploadNewOnes(uid, date);
-      debugPrint('🟢 3. 업로드 완료: ${newUrls.length}장');
 
       // 2) 남길 기존 URL만 필터링
       final keptExisting = List<String>.from(_existingImageUrls);
       final imageUrls = [...keptExisting, ...newUrls];
 
-      debugPrint('🟢 4. 최종 이미지 개수: ${imageUrls.length}장');
-
-      debugPrint('🟢 5. 로컬 캐시 저장 시작');
       // 4) 로컬 캐시 저장
       final entry = <String, dynamic>{
         'emotion': _selectedEmotion!,
@@ -226,9 +203,7 @@ class _EmotionInputScreenState extends State<EmotionInputScreen> {
       data[date] = entry;
       await writeEmotionCache(key, data);
       emotionDataNotifier.value = data;
-      debugPrint('🟢 6. 로컬 캐시 저장 완료');
 
-      debugPrint('🟢 7. Firestore 저장 시작');
       // 5) Firestore 저장
       await saveEmotionAndNoteMulti(
         date: date,
@@ -236,12 +211,9 @@ class _EmotionInputScreenState extends State<EmotionInputScreen> {
         note: _diaryController.text,
         imageUrls: imageUrls,
       );
-      debugPrint('🟢 8. Firestore 저장 완료');
 
-      debugPrint('🟢 9. 삭제 표시된 이미지 제거 시작');
       // 6) Storage에서 삭제 표시된 기존 파일 제거
       await _deleteRemovedExistingFromStorage();
-      debugPrint('🟢 10. 모든 작업 완료! ✨');
 
       if (!mounted) return;
 
@@ -253,9 +225,6 @@ class _EmotionInputScreenState extends State<EmotionInputScreen> {
       Navigator.pop(context);
 
     } catch (e, stackTrace) {
-      // ✅ 에러 처리 추가!
-      debugPrint('❌ 저장 실패: $e');
-      debugPrint('Stack trace: $stackTrace');
 
       if (!mounted) return;
 

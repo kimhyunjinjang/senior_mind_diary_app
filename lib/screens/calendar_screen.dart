@@ -736,8 +736,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                         },
                                         errorBuilder: (context, error,
                                             stackTrace) {
-                                          debugPrint(
-                                              '🔴 이미지 로드 실패: $url, 에러: $error');
                                           return Container(
                                             width: 100,
                                             height: 100,

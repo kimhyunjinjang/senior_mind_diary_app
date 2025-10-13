@@ -691,11 +691,9 @@ Future<String?> _getMySeniorUidIfGuardian(String myUid) async {
     if (q.docs.isEmpty) return null;
     return q.docs.first.id;
   } on FirebaseException catch (e) {
-    debugPrint('🔥 _getMySeniorUidIfGuardian Firestore error: ${e.code} ${e.message}');
     // permission-denied면 일단 보호자 아님으로 취급
     return null;
   } catch (e, st) {
-    debugPrint('🔥 unexpected in _getMySeniorUidIfGuardian: $e\n$st');
     return null;
   }
 }
