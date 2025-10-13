@@ -343,7 +343,7 @@ class _AccountRegisterScreenState extends State<AccountRegisterScreen> {
                         MaterialPageRoute(builder: (_) => const ForgotPasswordScreen()),
                       );
                     },
-                    child: const Text('비밀번호 찾기', style: TextStyle(fontSize: 14)),
+                    child: const Text('비밀번호 찾기', style: TextStyle(fontSize: 16)),
                   ),
                 ],
               )

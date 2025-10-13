@@ -436,6 +436,12 @@ class _SearchDiaryScreenState extends State<SearchDiaryScreen> {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized(); // Flutter 초기화
+
+  // 세로 모드만 허용
+  SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+  ]);
+
   await initializeDateFormatting('ko_KR', null); // 한글 날짜 포맷 초기화
   // Firebase 초기화
   await Firebase.initializeApp(

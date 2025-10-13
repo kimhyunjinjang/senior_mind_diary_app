@@ -128,11 +128,28 @@ class _SearchDiaryScreenState extends State<SearchDiaryScreen> {
                     final diary = filteredEntries[index].value['diary'] ?? '';
 
                     return ListTile(
-                      title: Text('[$date] $emotion'),
-                      subtitle: RichText(
-                        text: TextSpan(
-                          children: _highlightKeyword(diary, _keyword),
-                          style: const TextStyle(color: Colors.black),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16.0,
+                        vertical: 8.0,
+                      ),
+                      title: Text(
+                        '[$date] $emotion',
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      subtitle: Padding(
+                        padding: const EdgeInsets.only(top: 8.0),
+                        child: RichText(
+                          text: TextSpan(
+                            children: _highlightKeyword(diary, _keyword),
+                            style: const TextStyle(
+                              color: Colors.black87,
+                              fontSize: 17,
+                              height: 1.5,
+                            ),
+                          ),
                         ),
                       ),
                     );

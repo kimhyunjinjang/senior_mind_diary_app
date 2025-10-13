@@ -28,7 +28,7 @@ class _EmotionInputScreenState extends State<EmotionInputScreen> {
   // 여러 장 첨부용 상태
   final List<File> _pickedImages = [];          // 새로 고른 로컬 파일들
   List<String> _existingImageUrls = [];         // 이미 저장돼 있던 URL들
-  final Set<int> _removeExistingIdx = {};       // 기존 URL 중 삭제 표시된 인덱스
+  List<String> _deletedUrls = []; // 삭제된 URL 목록 (Storage 삭제용)
   bool _uploading = false;
   static const int _maxImages = 3;              // 시니어 UX: 최대 3장 권장
 
@@ -113,12 +113,13 @@ class _EmotionInputScreenState extends State<EmotionInputScreen> {
     );
   }
 
-  void _toggleRemoveExisting(int index) {
+  void _removeExistingImage(int index) {
     setState(() {
-      if (_removeExistingIdx.contains(index)) {
-        _removeExistingIdx.remove(index);
-      } else {
-        _removeExistingIdx.add(index);
+      if (index >= 0 && index < _existingImageUrls.length) {
+        final removedUrl = _existingImageUrls[index];
+        _deletedUrls.add(removedUrl); // 나중에 Storage에서 삭제할 목록에 추가
+        _existingImageUrls.removeAt(index); // 리스트에서 즉시 제거
+        debugPrint('이미지 제거 예약: $removedUrl');
       }
     });
   }
@@ -165,14 +166,9 @@ class _EmotionInputScreenState extends State<EmotionInputScreen> {
   }
 
   Future<void> _deleteRemovedExistingFromStorage() async {
-    // 표시된 기존 URL만 실제로 삭제
-    for (final idx in _removeExistingIdx) {
-      if (idx >= 0 && idx < _existingImageUrls.length) {
-        final url = _existingImageUrls[idx];
+    for (final url in _deletedUrls) {
         try {
-          // ★ 중요: 우리가 강제로 지정한 버킷 인스턴스 사용
           final ref = _storage.refFromURL(url);
-
           // ★ 디버그 로그 (버킷/경로/원본 URL)
           debugPrint('DELETE → bucket=${_storage.bucket}, path=${ref.fullPath}');
           debugPrint('DELETE URL → $url');
@@ -187,7 +183,6 @@ class _EmotionInputScreenState extends State<EmotionInputScreen> {
         }
       }
     }
-  }
 
   void _saveData() async {
     if (_selectedEmotion == null) {
@@ -215,14 +210,7 @@ class _EmotionInputScreenState extends State<EmotionInputScreen> {
       debugPrint('🟢 3. 업로드 완료: ${newUrls.length}장');
 
       // 2) 남길 기존 URL만 필터링
-      final keptExisting = <String>[];
-      for (int i = 0; i < _existingImageUrls.length; i++) {
-        if (!_removeExistingIdx.contains(i)) {
-          keptExisting.add(_existingImageUrls[i]);
-        }
-      }
-
-      // 3) 최종 배열
+      final keptExisting = List<String>.from(_existingImageUrls);
       final imageUrls = [...keptExisting, ...newUrls];
 
       debugPrint('🟢 4. 최종 이미지 개수: ${imageUrls.length}장');
@@ -310,12 +298,9 @@ class _EmotionInputScreenState extends State<EmotionInputScreen> {
 
     // 기존 URL 목록 (삭제 토글 가능)
     for (int i = 0; i < _existingImageUrls.length; i++) {
-      final removed = _removeExistingIdx.contains(i);
       tiles.add(Stack(
         children: [
-          Opacity(
-            opacity: removed ? 0.4 : 1.0,
-            child: ClipRRect(
+          ClipRRect(
               borderRadius: BorderRadius.circular(8),
               child: Image.network(
                 _existingImageUrls[i],
@@ -324,14 +309,17 @@ class _EmotionInputScreenState extends State<EmotionInputScreen> {
                 fit: BoxFit.cover,
               ),
             ),
-          ),
           Positioned(
             right: 0,
             top: 0,
             child: IconButton(
-              icon: Icon(removed ? Icons.undo : Icons.close, size: 18),
-              onPressed: () => _toggleRemoveExisting(i),
-              tooltip: removed ? '복구' : '삭제',
+              icon: const Icon(Icons.close, size: 18, color: Colors.white),
+              onPressed: () => _removeExistingImage(i),
+              tooltip: '삭제',
+              style: IconButton.styleFrom(
+                backgroundColor: Colors.black54,
+                padding: EdgeInsets.all(4),
+              ),
             ),
           ),
         ],
@@ -375,59 +363,142 @@ class _EmotionInputScreenState extends State<EmotionInputScreen> {
         '${widget.selectedDay.month}월 ${widget.selectedDay.day}일 감정 입력';
 
     return Scaffold(
-      appBar: AppBar(title: Text(dateLabel)),
+      appBar: AppBar(
+        title: Text(dateLabel),
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black,
+        elevation: 0,
+      ),
         body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24.0),
+        padding: const EdgeInsets.all(20.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text('오늘 기분은 어땠나요?',
-                style: TextStyle(fontSize: 24)),
-            const SizedBox(height: 24),
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+            ),
+            const SizedBox(height: 20),
+
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                EmotionButton(
-                  emoji: '😊',
-                  label: '기분 좋음',
-                  color: Colors.lightBlue.shade200,
-                  onTap: () => setState(() => _selectedEmotion = '기분 좋음'),
-                  selected: _selectedEmotion == '기분 좋음',
-                  labelStyle: const TextStyle(fontSize: 22, height: 1.35, fontWeight: FontWeight.w600),
+                Expanded(
+                  child: EmotionButton(
+                    emoji: '😊',
+                    label: '기분 좋음',
+                    color: Colors.lightBlue.shade200,
+                    onTap: () => setState(() => _selectedEmotion = '기분 좋음'),
+                    selected: _selectedEmotion == '기분 좋음',
+                    labelStyle: const TextStyle(fontSize: 22, height: 1.35, fontWeight: FontWeight.w600),
+                  ),
                 ),
-                EmotionButton(
-                  emoji: '😐',
-                  label: '보통',
-                  color: const Color(0xFFE6D3B3),
-                  onTap: () => setState(() => _selectedEmotion = '보통'),
-                  selected: _selectedEmotion == '보통',
+                const SizedBox(width: 12),
+                Expanded(
+                  child: EmotionButton(
+                    emoji: '😐',
+                    label: '보통',
+                    color: const Color(0xFFE6D3B3),
+                    onTap: () => setState(() => _selectedEmotion = '보통'),
+                    selected: _selectedEmotion == '보통',
+                  ),
                 ),
-                EmotionButton(
-                  emoji: '😞',
-                  label: '기분 안 좋음',
-                  color: Colors.grey.shade400,
-                  onTap: () => setState(() => _selectedEmotion = '기분 안 좋음'),
-                  selected: _selectedEmotion == '기분 안 좋음',
+                const SizedBox(width: 12),
+                Expanded(
+                  child:  EmotionButton(
+                    emoji: '😞',
+                    label: '기분 안 좋음',
+                    color: Colors.grey.shade400,
+                    onTap: () => setState(() => _selectedEmotion = '기분 안 좋음'),
+                    selected: _selectedEmotion == '기분 안 좋음',
+                  ),
                 ),
               ],
             ),
             const SizedBox(height: 24),
 
-            // ▼ 이미지 컨트롤 + 썸네일
+            TextField(
+              controller: _diaryController,
+              maxLines: 10,
+              decoration: InputDecoration(
+                hintText: (_diaryController.text.isEmpty && !_loading)
+                    ? '오늘 하루를 간단히 기록해보세요'
+                    : null,
+                hintStyle: TextStyle(color: Colors.grey[400]),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey[300]!),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey[300]!),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.blue, width: 2),
+                ),
+                contentPadding: EdgeInsets.all(16),
+              ),
+              style: TextStyle(fontSize: 17, height: 1.5),
+            ),
+            const SizedBox(height: 20),
+
+            Divider(thickness: 1, color: Colors.grey[300]),
+            const SizedBox(height: 20),
+
+            Row(
+              children: [
+                Text(
+                  '📷 사진 추가',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey[700],
+                  ),
+                ),
+                SizedBox(width: 8),
+                Text(
+                  '(선택)',
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.grey[500],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+
             Row(
               children: [
                 OutlinedButton.icon(
                   onPressed: _pickFromGallery,
-                  icon: const Icon(Icons.photo),
-                  label: const Text('사진 추가'),
-                  style: ElevatedButton.styleFrom(foregroundColor: Colors.black),
+                  icon: const Icon(Icons.add_photo_alternate, size: 18),
+                  label: const Text('사진 추가', style: TextStyle(fontSize: 14)),
+                  style: OutlinedButton.styleFrom(
+                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    side: BorderSide(color: Colors.grey[400]!),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    foregroundColor: Colors.black,
+                  ),
                 ),
                 const SizedBox(width: 12),
                 OutlinedButton.icon(
                   onPressed: _pickFromCamera,
-                  icon: const Icon(Icons.photo_camera),
-                  label: const Text('촬영'),
-                  style: ElevatedButton.styleFrom(foregroundColor: Colors.black),
+                  icon: const Icon(Icons.camera_alt, size: 18),
+                  label: const Text('촬영', style: TextStyle(fontSize: 14)),
+                  style: OutlinedButton.styleFrom(
+                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    side: BorderSide(color: Colors.grey[400]!),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    foregroundColor: Colors.black,
+                  ),
                 ),
                 const SizedBox(width: 12),
                 if (_uploading)
@@ -438,34 +509,34 @@ class _EmotionInputScreenState extends State<EmotionInputScreen> {
                   ),
               ],
             ),
-            const SizedBox(height: 8),
-            _buildThumbnails(),
+
+            // 썸네일 표시
+            if (_existingImageUrls.isNotEmpty || _pickedImages.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              _buildThumbnails(),
+            ],
+
             const SizedBox(height: 24),
 
-            TextField(
-              controller: _diaryController,
-              maxLines: 10,
-              decoration: InputDecoration(
-                hintText: (_diaryController.text.isEmpty && !_loading)
-                    ? '오늘 하루를 간단히 기록해보세요'
-                    : null,
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 24),
             ElevatedButton(
               onPressed: _uploading ? null : _saveData,
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.indigo.shade400,
                 foregroundColor: Colors.white,
-                padding: EdgeInsets.symmetric(horizontal: 48, vertical: 16),
+                minimumSize: Size(double.infinity, 52),
+                padding: EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
+                disabledBackgroundColor: Colors.grey[300],
+                elevation: 0,
               ),
-              child: const Text('저장하기'),
+              child: Text(
+                '저장하기',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
             ),
-            const SizedBox(height: 48),
+            const SizedBox(height: 40),
           ],
         ),
       ),
