@@ -50,7 +50,6 @@ class _InviteCodeInputScreenState extends State<InviteCodeInputScreen> {
 
       // ✅ 6자리 초대코드(숫자만) 판별
       // 영문+숫자 6자리로 운영하면 정규식을 교체:
-      // final isInviteCode = RegExp(r'^[A-HJ-NP-Z2-9]{6}$').hasMatch(input);
       final isInviteCode = RegExp(r'^[A-Za-z0-9]{6}$').hasMatch(input);
 
       if (isInviteCode) {

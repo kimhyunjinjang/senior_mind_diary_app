@@ -22,7 +22,7 @@ class _AccountRegisterScreenState extends State<AccountRegisterScreen> {
   bool _isLogin = false; // false=회원가입, true=로그인
   bool _busy = false;
   bool _showPassword = false;
-  final _emailReg = RegExp(r'^[^@]+@[^@]+\.[^@]+$');
+  final _emailReg = RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$');
 
   static const TextStyle _guideOk  = TextStyle(fontSize: 16, height: 1.4, color: Colors.green);
   static const TextStyle _guideErr = TextStyle(fontSize: 16, height: 1.4, color: Colors.red);
