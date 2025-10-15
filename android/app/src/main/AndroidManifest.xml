@@ -1,9 +1,4 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.khj.senior_diary">
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-    <uses-permission
-        android:name="android.permission.READ_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32" />
-
     <application
         android:label="시니어 마음일기"
         android:name="${applicationName}"
